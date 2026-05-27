@@ -24,7 +24,6 @@ function capitalizar(texto) {
   return texto.charAt(0).toUpperCase() + texto.slice(1).toLowerCase();
 }
 
-// GLPI muestra "Nombre Apellido"; si ambos son iguales se ve duplicado
 function nombreDesdeCorreo(email, nombreDisplay) {
   if (nombreDisplay?.trim()) {
     const partes = nombreDisplay.trim().split(/\s+/);
@@ -47,24 +46,48 @@ function nombreDesdeCorreo(email, nombreDisplay) {
   return { firstname: capitalizar(local), realname: "" };
 }
 
-// Los correos están en UserEmail; criteria en GET /User devuelve resultados incorrectos
 async function buscarUsuarioPorEmail(email, sessionToken) {
   const emailNorm = email.trim().toLowerCase();
 
   const response = await axios.get(
     `${process.env.GLPI_URL}/UserEmail?searchText[email]=${encodeURIComponent(emailNorm)}`,
-    { headers: headersGLPI(sessionToken) },
+    { headers: headersGLPI(sessionToken) }
   );
 
   const registro = (response.data || []).find(
-    (item) => item.email?.toLowerCase() === emailNorm,
+    (item) => item.email?.toLowerCase() === emailNorm
   );
 
-  if (!registro?.users_id) {
-    return null;
-  }
+  if (!registro?.users_id) return null;
 
   return { id: registro.users_id };
+}
+
+async function buscarUsuarioGLPIPorEmail(email) {
+  const sessionToken = await iniciarSesionGLPI();
+  return await buscarUsuarioPorEmail(email, sessionToken);
+}
+
+async function buscarUsuarioGLPIPorLogin(login) {
+  const sessionToken = await iniciarSesionGLPI();
+  const loginNorm = String(login || "").trim();
+  if (!loginNorm) return null;
+
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/User?searchText[name]=${encodeURIComponent(loginNorm)}`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  const users = normalizarListaGLPI(response.data);
+  const match = users.find(
+    (u) =>
+      String(u?.name || "")
+        .trim()
+        .toLowerCase() === loginNorm.toLowerCase()
+  );
+
+  if (!match?.id) return null;
+  return { id: match.id };
 }
 
 async function obtenerUsuario(userId, sessionToken) {
@@ -80,32 +103,17 @@ function nombreEstaDuplicado(usuario, email) {
   const firstname = (usuario.firstname || "").trim().toLowerCase();
   const realname = (usuario.realname || "").trim().toLowerCase();
 
-  if (!firstname && !realname) {
-    return true;
-  }
-
-  if (firstname && firstname === realname) {
-    return true;
-  }
-
-  if (firstname === login || realname === login) {
-    return true;
-  }
+  if (!firstname && !realname) return true;
+  if (firstname && firstname === realname) return true;
+  if (firstname === login || realname === login) return true;
 
   return false;
 }
 
-async function corregirNombreUsuario(
-  userId,
-  email,
-  nombreDisplay,
-  sessionToken,
-) {
+async function corregirNombreUsuario(userId, email, nombreDisplay, sessionToken) {
   const usuario = await obtenerUsuario(userId, sessionToken);
 
-  if (!nombreEstaDuplicado(usuario, email)) {
-    return userId;
-  }
+  if (!nombreEstaDuplicado(usuario, email)) return userId;
 
   const { firstname, realname } = nombreDesdeCorreo(email, nombreDisplay);
 
@@ -118,7 +126,7 @@ async function corregirNombreUsuario(
         realname,
       },
     },
-    { headers: headersGLPI(sessionToken) },
+    { headers: headersGLPI(sessionToken) }
   );
 
   return userId;
@@ -140,7 +148,7 @@ async function crearUsuario(email, sessionToken, nombreDisplay) {
         entities_id: 1,
       },
     },
-    { headers: headersGLPI(sessionToken) },
+    { headers: headersGLPI(sessionToken) }
   );
 
   const userId = response.data.id;
@@ -154,7 +162,7 @@ async function crearUsuario(email, sessionToken, nombreDisplay) {
         is_default: 1,
       },
     },
-    { headers: headersGLPI(sessionToken) },
+    { headers: headersGLPI(sessionToken) }
   );
 
   return userId;
@@ -164,17 +172,75 @@ async function obtenerTicketsGLPI() {
   const sessionToken = await iniciarSesionGLPI();
 
   const response = await axios.get(`${process.env.GLPI_URL}/Ticket`, {
-    headers: {
-      "Content-Type": "application/json",
-      "App-Token": process.env.GLPI_APP_TOKEN,
-      "Session-Token": sessionToken,
-    },
+    headers: headersGLPI(sessionToken),
   });
 
   return response.data;
 }
 
-async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante) {
+async function obtenerUsersGLPI() {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const response = await axios.get(`${process.env.GLPI_URL}/User`, {
+    headers: headersGLPI(sessionToken),
+  });
+
+  return normalizarListaGLPI(response.data);
+}
+
+function normalizarListaGLPI(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+async function obtenerUserEmailsGLPI(userId, sessionToken) {
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/User/${userId}/UserEmail`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return normalizarListaGLPI(response.data);
+}
+
+async function obtenerUsersConEmailsGLPI(limit = 50) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const usersResponse = await axios.get(`${process.env.GLPI_URL}/User`, {
+    headers: headersGLPI(sessionToken),
+  });
+
+  const users = normalizarListaGLPI(usersResponse.data);
+  const slice = users.slice(0, Number(limit) || 50);
+
+  const result = [];
+
+  for (const u of slice) {
+    const userId = u?.id || u?.users_id;
+    if (!userId) continue;
+
+    let email = null;
+
+    try {
+      const emails = await obtenerUserEmailsGLPI(userId, sessionToken);
+      const defaultEmail =
+        emails.find((e) => e?.is_default === 1 || e?.is_default === true) ||
+        emails[0];
+
+      email = defaultEmail?.email ?? null;
+    } catch {}
+
+    result.push({
+      ...u,
+      email,
+    });
+  }
+
+  return result;
+}
+
+async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, tecnicoId = 0) {
   const sessionToken = await iniciarSesionGLPI();
 
   const user = await buscarUsuarioPorEmail(email, sessionToken);
@@ -186,30 +252,70 @@ async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante) {
       user.id,
       email,
       nombreSolicitante,
-      sessionToken,
+      sessionToken
     );
   } else {
     userId = await crearUsuario(email, sessionToken, nombreSolicitante);
   }
 
+  const input = {
+    name: asunto,
+    content: descripcion,
+    priority: 3,
+    entities_id: 1,
+    _users_id_requester: userId,
+  };
+
+  if (tecnicoId && tecnicoId !== 0) {
+    input._users_id_assign = tecnicoId;
+  }
+
   const response = await axios.post(
     `${process.env.GLPI_URL}/Ticket`,
-    {
-      input: {
-        name: asunto,
-        content: descripcion,
-        priority: 3,
-        entities_id: 1,
-        _users_id_requester: userId,
-      },
-    },
-    { headers: headersGLPI(sessionToken) },
+    { input },
+    { headers: headersGLPI(sessionToken) }
   );
 
   return response.data;
 }
 
+async function agregarUsuarioATicket(ticketId, userId, type = 2) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const payload = {
+    input: {
+      tickets_id: ticketId,
+      users_id: userId,
+      type,
+    },
+  };
+
+  // GLPI puede exponer esto de dos formas según versión/config:
+  // - POST /Ticket_User
+  // - POST /Ticket/:id/Ticket_User
+  try {
+    const response = await axios.post(
+      `${process.env.GLPI_URL}/Ticket_User`,
+      payload,
+      { headers: headersGLPI(sessionToken) }
+    );
+    return response.data;
+  } catch (error) {
+    const response = await axios.post(
+      `${process.env.GLPI_URL}/Ticket/${ticketId}/Ticket_User`,
+      payload,
+      { headers: headersGLPI(sessionToken) }
+    );
+    return response.data;
+  }
+}
+
 module.exports = {
   obtenerTicketsGLPI,
+  obtenerUsersGLPI,
+  obtenerUsersConEmailsGLPI,
   crearTicketGLPI,
+  buscarUsuarioGLPIPorEmail,
+  buscarUsuarioGLPIPorLogin,
+  agregarUsuarioATicket,
 };
