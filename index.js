@@ -1,4 +1,4 @@
-require("dotenv").config();
+/*require("dotenv").config();
 
 const express = require("express");
 
@@ -15,7 +15,7 @@ const app = express();
 
 app.use(express.json());
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(
   "/api/tickets",
@@ -36,4 +36,27 @@ app.listen(PORT, () => {
   console.log(
     `API ejecutándose en puerto ${PORT}`
   );
+});
+*/
+require("dotenv").config();
+
+const express = require("express");
+const app = express();
+
+const PORT = process.env.PORT || 3000;
+
+const {
+  iniciarJobTickets
+} = require("./job/ticket.job");
+
+console.log("Servicio iniciado...");
+
+iniciarJobTickets();
+
+app.get("/", (req, res) => {
+  res.send("GLPI Job Running");
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en ${PORT}`);
 });
