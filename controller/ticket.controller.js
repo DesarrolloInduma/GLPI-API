@@ -214,18 +214,25 @@ async function procesarCorreosNoLeidos(req, res) {
       }
     }
 
-    res.json({
-      ok: true,
-      procesados: resultados.length,
-      resultados,
-    });
+    if (res) {
+      return res.json({
+        ok: true,
+        procesados: resultados.length,
+        resultados,
+      });
+    }
+    
+    return resultados;
   } catch (error) {
     console.error(error);
-
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    if (res) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+      });
+    }
+    
+    throw error;
   }
 }
 
