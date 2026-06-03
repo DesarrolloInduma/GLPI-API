@@ -16,9 +16,20 @@ function leerEstado() {
     return {
       inicializado: Boolean(estado.inicializado),
       enviados: Array.isArray(estado.enviados) ? estado.enviados : [],
+      baseline: {
+        followup: Number(estado.baseline?.followup || 0),
+        solution: Number(estado.baseline?.solution || 0),
+      },
     };
   } catch {
-    return { inicializado: false, enviados: [] };
+    return {
+      inicializado: false,
+      enviados: [],
+      baseline: {
+        followup: 0,
+        solution: 0,
+      },
+    };
   }
 }
 
@@ -48,8 +59,22 @@ function marcarSeguimientosEnviados(followupIds, inicializado = true) {
   }
 
   guardarEstado({
+    ...estado,
     inicializado,
     enviados: [...enviados].slice(-1000),
+  });
+}
+
+function guardarBaseline(baseline) {
+  const estado = leerEstado();
+
+  guardarEstado({
+    ...estado,
+    inicializado: true,
+    baseline: {
+      followup: Number(baseline.followup || 0),
+      solution: Number(baseline.solution || 0),
+    },
   });
 }
 
@@ -57,4 +82,5 @@ module.exports = {
   leerEstado,
   seguimientoYaEnviado,
   marcarSeguimientosEnviados,
+  guardarBaseline,
 };

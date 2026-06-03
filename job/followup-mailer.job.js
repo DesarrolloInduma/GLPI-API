@@ -13,6 +13,7 @@ const {
   leerEstado,
   seguimientoYaEnviado,
   marcarSeguimientosEnviados,
+  guardarBaseline,
 } = require("../services/followup-state");
 
 const ESTADOS_TICKET = {
@@ -24,7 +25,12 @@ const ESTADOS_TICKET = {
   6: "Cerrado",
 };
 
-const monitorIniciadoEn = new Date();
+const baselineIds = {
+  followup: null,
+  solution: null,
+};
+
+const EVENTOS_POR_REVISION = Number(process.env.GLPI_EVENTOS_POR_REVISION || 200);
 
 function obtenerNombreEstadoTicket(status) {
   return ESTADOS_TICKET[Number(status)] || `Estado ${status}`;
@@ -59,6 +65,7 @@ function esSolucionDeTicket(solucion) {
 function eventoDesdeSeguimiento(seguimiento) {
   return {
     id: `followup:${seguimiento.id}`,
+    clase: "followup",
     numericId: Number(seguimiento.id),
     tipo: "respuesta",
     ticketId: seguimiento.items_id,
@@ -70,6 +77,7 @@ function eventoDesdeSeguimiento(seguimiento) {
 function eventoDesdeSolucion(solucion) {
   return {
     id: `solution:${solucion.id}`,
+    clase: "solution",
     numericId: Number(solucion.id),
     tipo: "solucion",
     ticketId: solucion.items_id,
@@ -78,26 +86,32 @@ function eventoDesdeSolucion(solucion) {
   };
 }
 
-function fechaGLPIComoDate(fecha) {
-  const match = String(fecha || "").match(
-    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+function establecerLineaBase(eventos) {
+  const maxFollowup = Math.max(
+    0,
+    ...eventos
+      .filter((evento) => evento.clase === "followup")
+      .map((evento) => evento.numericId)
+  );
+  const maxSolution = Math.max(
+    0,
+    ...eventos
+      .filter((evento) => evento.clase === "solution")
+      .map((evento) => evento.numericId)
   );
 
-  if (!match) return null;
-
-  const [, year, month, day, hour, minute, second] = match.map(Number);
-  return new Date(year, month - 1, day, hour, minute, second);
+  baselineIds.followup = maxFollowup;
+  baselineIds.solution = maxSolution;
 }
 
-function eventoCreadoDespuesDelArranque(evento) {
-  const fechaEvento = fechaGLPIComoDate(evento.fecha);
-  return Boolean(fechaEvento && fechaEvento > monitorIniciadoEn);
+function eventoPosteriorALineaBase(evento) {
+  return evento.numericId > Number(baselineIds[evento.clase] || 0);
 }
 
 async function enviarSeguimientosNuevos() {
   const [seguimientos, soluciones] = await Promise.all([
-    obtenerSeguimientosRecientesGLPI(50),
-    obtenerSolucionesRecientesGLPI(50),
+    obtenerSeguimientosRecientesGLPI(EVENTOS_POR_REVISION),
+    obtenerSolucionesRecientesGLPI(EVENTOS_POR_REVISION),
   ]);
 
   const eventos = [
@@ -107,7 +121,22 @@ async function enviarSeguimientosNuevos() {
 
   const estado = leerEstado();
 
+  if (baselineIds.followup === null || baselineIds.solution === null) {
+    establecerLineaBase(eventos);
+    guardarBaseline(baselineIds);
+    marcarSeguimientosEnviados(
+      eventos.map((evento) => evento.id),
+      true
+    );
+    console.log(
+      `Monitor inicializado: followup>${baselineIds.followup}, solution>${baselineIds.solution}. Solo se notificaran eventos nuevos.`
+    );
+    return [];
+  }
+
   if (!estado.inicializado) {
+    establecerLineaBase(eventos);
+    guardarBaseline(baselineIds);
     marcarSeguimientosEnviados(
       eventos.map((evento) => evento.id),
       true
@@ -121,7 +150,7 @@ async function enviarSeguimientosNuevos() {
 
   const eventosViejosNoRegistrados = eventos.filter(
     (evento) =>
-      !eventoCreadoDespuesDelArranque(evento) && !seguimientoYaEnviado(evento.id)
+      !eventoPosteriorALineaBase(evento) && !seguimientoYaEnviado(evento.id)
   );
 
   if (eventosViejosNoRegistrados.length) {
@@ -136,7 +165,7 @@ async function enviarSeguimientosNuevos() {
 
   const enviados = [];
   const nuevos = eventos
-    .filter(eventoCreadoDespuesDelArranque)
+    .filter(eventoPosteriorALineaBase)
     .filter((evento) => !seguimientoYaEnviado(evento.id))
     .sort((a, b) => Number(a.numericId) - Number(b.numericId));
 
