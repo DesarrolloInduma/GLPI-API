@@ -138,26 +138,11 @@ async function inicializarMonitorSeguimientos() {
 
 async function enviarSeguimientosNuevos() {
   if (!monitorInicializado) {
-    await inicializarMonitorSeguimientos();
+    console.log("Monitor de respuestas aun no inicializado. Se omite esta revision.");
     return [];
   }
 
   const eventos = await obtenerEventosGLPI();
-
-  const eventosViejosNoRegistrados = eventos.filter(
-    (evento) =>
-      !eventoPosteriorALineaBase(evento) && !seguimientoYaEnviado(evento.id)
-  );
-
-  if (eventosViejosNoRegistrados.length) {
-    marcarSeguimientosEnviados(
-      eventosViejosNoRegistrados.map((evento) => evento.id),
-      true
-    );
-    console.log(
-      `Eventos anteriores al arranque ignorados: ${eventosViejosNoRegistrados.length}`
-    );
-  }
 
   const enviados = [];
   const nuevos = eventos
@@ -218,21 +203,23 @@ async function enviarSeguimientosNuevos() {
 function iniciarJobSeguimientos() {
   console.log("Iniciando monitor de respuestas GLPI...");
 
-  inicializarMonitorSeguimientos().catch((error) => {
-    console.error("Error inicializando monitor de respuestas:", error.message);
-  });
+  inicializarMonitorSeguimientos()
+    .then(() => {
+      cron.schedule("* * * * *", async () => {
+        try {
+          const enviados = await enviarSeguimientosNuevos();
 
-  cron.schedule("* * * * *", async () => {
-    try {
-      const enviados = await enviarSeguimientosNuevos();
-
-      if (enviados.length) {
-        console.log(`Respuestas notificadas por correo: ${enviados.length}`);
-      }
-    } catch (error) {
-      console.error("Error en monitor de respuestas:", error.message);
-    }
-  });
+          if (enviados.length) {
+            console.log(`Respuestas notificadas por correo: ${enviados.length}`);
+          }
+        } catch (error) {
+          console.error("Error en monitor de respuestas:", error.message);
+        }
+      });
+    })
+    .catch((error) => {
+      console.error("Error inicializando monitor de respuestas:", error.message);
+    });
 }
 
 module.exports = {
