@@ -27,17 +27,23 @@ function guardarEstado(estado) {
   fs.writeFileSync(statePath, JSON.stringify(estado, null, 2));
 }
 
+function normalizarIdEvento(eventoId) {
+  return String(eventoId || "").trim();
+}
+
 function seguimientoYaEnviado(followupId) {
   const estado = leerEstado();
-  return estado.enviados.includes(Number(followupId));
+  const id = normalizarIdEvento(followupId);
+
+  return estado.enviados.map(String).includes(id);
 }
 
 function marcarSeguimientosEnviados(followupIds, inicializado = true) {
   const estado = leerEstado();
-  const enviados = new Set(estado.enviados.map(Number));
+  const enviados = new Set(estado.enviados.map(String));
 
   for (const followupId of followupIds) {
-    const id = Number(followupId);
+    const id = normalizarIdEvento(followupId);
     if (id) enviados.add(id);
   }
 

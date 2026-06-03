@@ -2,6 +2,7 @@ const cron = require("node-cron");
 
 const {
   obtenerSeguimientosRecientesGLPI,
+  obtenerSolucionesRecientesGLPI,
   obtenerTicketGLPI,
   obtenerSolicitanteTicketGLPI,
 } = require("../services/glpi");
@@ -45,29 +46,98 @@ function esSeguimientoDeTicketPublico(seguimiento) {
   );
 }
 
-async function enviarSeguimientosNuevos() {
-  const seguimientos = (await obtenerSeguimientosRecientesGLPI(50)).filter(
-    esSeguimientoDeTicketPublico
+function esSolucionDeTicket(solucion) {
+  return (
+    solucion?.id &&
+    solucion?.items_id &&
+    solucion?.itemtype === "Ticket"
   );
+}
+
+function eventoDesdeSeguimiento(seguimiento) {
+  return {
+    id: `followup:${seguimiento.id}`,
+    numericId: Number(seguimiento.id),
+    tipo: "respuesta",
+    ticketId: seguimiento.items_id,
+    contenido: seguimiento.content || "",
+    fecha: seguimiento.date_creation || seguimiento.date,
+  };
+}
+
+function eventoDesdeSolucion(solucion) {
+  return {
+    id: `solution:${solucion.id}`,
+    numericId: Number(solucion.id),
+    tipo: "solucion",
+    ticketId: solucion.items_id,
+    contenido: solucion.content || "",
+    fecha: solucion.date_creation || solucion.date_mod,
+  };
+}
+
+function fechaGLPIComoDate(fecha) {
+  const match = String(fecha || "").match(
+    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+  );
+
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+function esEventoReciente(evento) {
+  const minutos = Number(process.env.GLPI_INITIAL_NOTIFY_MINUTES || 15);
+  const fechaEvento = fechaGLPIComoDate(evento.fecha);
+
+  if (!fechaEvento) return false;
+
+  return Date.now() - fechaEvento.getTime() <= minutos * 60 * 1000;
+}
+
+async function enviarSeguimientosNuevos() {
+  const [seguimientos, soluciones] = await Promise.all([
+    obtenerSeguimientosRecientesGLPI(50),
+    obtenerSolucionesRecientesGLPI(50),
+  ]);
+
+  const eventos = [
+    ...seguimientos.filter(esSeguimientoDeTicketPublico).map(eventoDesdeSeguimiento),
+    ...soluciones.filter(esSolucionDeTicket).map(eventoDesdeSolucion),
+  ];
 
   const estado = leerEstado();
 
+  let candidatos = eventos;
+
   if (!estado.inicializado) {
+    const recientes = eventos.filter(esEventoReciente);
+    const historicos = eventos.filter((evento) => !esEventoReciente(evento));
+
     marcarSeguimientosEnviados(
-      seguimientos.map((seguimiento) => seguimiento.id),
+      historicos.map((evento) => evento.id),
       true
     );
-    console.log("Monitor de respuestas inicializado sin enviar historial.");
-    return [];
+
+    console.log(
+      `Monitor inicializado: ${historicos.length} eventos historicos ignorados, ${recientes.length} recientes por notificar.`
+    );
+
+    candidatos = recientes;
   }
 
   const enviados = [];
-  const nuevos = seguimientos
-    .filter((seguimiento) => !seguimientoYaEnviado(seguimiento.id))
-    .sort((a, b) => Number(a.id) - Number(b.id));
+  const nuevos = candidatos
+    .filter((evento) => !seguimientoYaEnviado(evento.id))
+    .sort((a, b) => Number(a.numericId) - Number(b.numericId));
 
-  for (const seguimiento of nuevos) {
-    const ticketId = seguimiento.items_id;
+  if (!nuevos.length) {
+    console.log("No hay respuestas o soluciones nuevas para notificar.");
+  }
+
+  for (const evento of nuevos) {
+    const ticketId = evento.ticketId;
 
     try {
       const [ticket, solicitante] = await Promise.all([
@@ -86,24 +156,24 @@ async function enviarSeguimientosNuevos() {
       const asunto = `Respuesta al ticket #${ticketId} - ${ticket.name || "Sin asunto"}`;
       const contenidoCorreo = `
         <p>Hola,</p>
-        <p>Se agregó una respuesta a tu caso <strong>#${escaparHtml(ticketId)}</strong>.</p>
+        <p>Se agregó una ${escaparHtml(evento.tipo)} a tu caso <strong>#${escaparHtml(ticketId)}</strong>.</p>
         <p><strong>Estado actual:</strong> ${escaparHtml(estadoTicket)}</p>
         <hr>
-        <div>${seguimiento.content || ""}</div>
+        <div>${evento.contenido}</div>
       `;
 
       await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
-      marcarSeguimientosEnviados([seguimiento.id], true);
+      marcarSeguimientosEnviados([evento.id], true);
 
       enviados.push({
-        seguimientoId: seguimiento.id,
+        eventoId: evento.id,
         ticketId,
         destinatario: solicitante.email,
         estado: estadoTicket,
       });
     } catch (error) {
       console.error(
-        `Error enviando seguimiento ${seguimiento.id} del ticket ${ticketId}:`,
+        `Error enviando evento ${evento.id} del ticket ${ticketId}:`,
         error.response?.data || error.message
       );
     }

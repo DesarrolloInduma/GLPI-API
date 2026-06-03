@@ -260,7 +260,19 @@ async function obtenerSeguimientosRecientesGLPI(limit = 50) {
   const rangeEnd = Math.max(Number(limit) || 50, 1) - 1;
 
   const response = await axios.get(
-    `${process.env.GLPI_URL}/ITILFollowup?range=0-${rangeEnd}&sort=date_creation&order=DESC`,
+    `${process.env.GLPI_URL}/ITILFollowup?range=0-${rangeEnd}&sort=id&order=DESC`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return normalizarListaGLPI(response.data);
+}
+
+async function obtenerSolucionesRecientesGLPI(limit = 50) {
+  const sessionToken = await iniciarSesionGLPI();
+  const rangeEnd = Math.max(Number(limit) || 50, 1) - 1;
+
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/ITILSolution?range=0-${rangeEnd}&sort=id&order=DESC`,
     { headers: headersGLPI(sessionToken) }
   );
 
@@ -457,6 +469,7 @@ module.exports = {
   obtenerSolicitanteTicketGLPI,
   agregarRespuestaTicketGLPI,
   obtenerSeguimientosRecientesGLPI,
+  obtenerSolucionesRecientesGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
