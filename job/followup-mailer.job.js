@@ -24,6 +24,8 @@ const ESTADOS_TICKET = {
   6: "Cerrado",
 };
 
+const monitorIniciadoEn = new Date();
+
 function obtenerNombreEstadoTicket(status) {
   return ESTADOS_TICKET[Number(status)] || `Estado ${status}`;
 }
@@ -76,6 +78,22 @@ function eventoDesdeSolucion(solucion) {
   };
 }
 
+function fechaGLPIComoDate(fecha) {
+  const match = String(fecha || "").match(
+    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+  );
+
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+function eventoCreadoDespuesDelArranque(evento) {
+  const fechaEvento = fechaGLPIComoDate(evento.fecha);
+  return Boolean(fechaEvento && fechaEvento > monitorIniciadoEn);
+}
+
 async function enviarSeguimientosNuevos() {
   const [seguimientos, soluciones] = await Promise.all([
     obtenerSeguimientosRecientesGLPI(50),
@@ -101,8 +119,24 @@ async function enviarSeguimientosNuevos() {
     return [];
   }
 
+  const eventosViejosNoRegistrados = eventos.filter(
+    (evento) =>
+      !eventoCreadoDespuesDelArranque(evento) && !seguimientoYaEnviado(evento.id)
+  );
+
+  if (eventosViejosNoRegistrados.length) {
+    marcarSeguimientosEnviados(
+      eventosViejosNoRegistrados.map((evento) => evento.id),
+      true
+    );
+    console.log(
+      `Eventos anteriores al arranque ignorados: ${eventosViejosNoRegistrados.length}`
+    );
+  }
+
   const enviados = [];
   const nuevos = eventos
+    .filter(eventoCreadoDespuesDelArranque)
     .filter((evento) => !seguimientoYaEnviado(evento.id))
     .sort((a, b) => Number(a.numericId) - Number(b.numericId));
 
