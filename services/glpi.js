@@ -1,4 +1,5 @@
 const axios = require("axios");
+const FormData = require("form-data");
 
 async function iniciarSesionGLPI() {
   const response = await axios.get(`${process.env.GLPI_URL}/initSession`, {
@@ -290,46 +291,6 @@ async function agregarUsuarioATicket(ticketId, userId, type = 2) {
     },
   };
 
-  const FormData = require('form-data');
-
-// Upload a document to GLPI and return its ID
-async function subirDocumentoGLPI(fileName, contentBase64, mimeType) {
-  const sessionToken = await iniciarSesionGLPI();
-  const form = new FormData();
-  // uploadManifest with document name
-  form.append('uploadManifest', JSON.stringify({ input: { name: fileName } }));
-  // file content as buffer
-  const buffer = Buffer.from(contentBase64, 'base64');
-  form.append('filename[0]', buffer, { filename: fileName, contentType: mimeType });
-  const response = await axios.post(
-    `${process.env.GLPI_URL}/Document`,
-    form,
-+    { headers: { ...headersGLPI(sessionToken), ...form.getHeaders() } }
-  );
-  // GLPI returns the new document ID in response.data.id
-  return response.data.id;
-}
-
-// Link an existing document to a ticket
-async function vincularDocumentoATicket(ticketId, documentId) {
-  const sessionToken = await iniciarSesionGLPI();
-  const payload = {
-    input: {
-      itemtype: 'Ticket',
-      items_id: ticketId,
-      documents_id: documentId,
-    },
-  };
-  // Use Document_Item endpoint
-  const response = await axios.post(
-    `${process.env.GLPI_URL}/Document_Item`,
-    payload,
-    { headers: headersGLPI(sessionToken) }
-  );
-  return response.data;
-}
-
-
   // - POST /Ticket_User
   // - POST /Ticket/:id/Ticket_User
   try {
@@ -347,6 +308,66 @@ async function vincularDocumentoATicket(ticketId, documentId) {
     );
     return response.data;
   }
+}
+
+// Upload a document to GLPI and return its ID
+async function subirDocumentoGLPI(fileName, contentBase64, mimeType) {
+  const sessionToken = await iniciarSesionGLPI();
+  const form = new FormData();
+
+  // uploadManifest with document name and entities_id
+  form.append(
+    "uploadManifest",
+    JSON.stringify({
+      input: {
+        name: fileName,
+        entities_id: 1,
+        _filename: [fileName],
+      },
+    })
+  );
+
+  // file content as buffer
+  const buffer = Buffer.from(contentBase64, "base64");
+  form.append("filename[0]", buffer, {
+    filename: fileName,
+    contentType: mimeType,
+  });
+
+  const response = await axios.post(
+    `${process.env.GLPI_URL}/Document`,
+    form,
+    {
+      headers: {
+        "App-Token": process.env.GLPI_APP_TOKEN,
+        "Session-Token": sessionToken,
+        ...form.getHeaders(),
+      },
+    }
+  );
+
+  // GLPI returns the new document ID in response.data.id
+  return response.data.id;
+}
+
+// Link an existing document to a ticket
+async function vincularDocumentoATicket(ticketId, documentId) {
+  const sessionToken = await iniciarSesionGLPI();
+  const payload = {
+    input: {
+      itemtype: "Ticket",
+      items_id: ticketId,
+      documents_id: documentId,
+    },
+  };
+
+  const response = await axios.post(
+    `${process.env.GLPI_URL}/Document_Item`,
+    payload,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return response.data;
 }
 
 module.exports = {

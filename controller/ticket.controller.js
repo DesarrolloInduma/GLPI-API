@@ -11,6 +11,8 @@ const {
 
 const {
   obtenerCorreoPorId,
+  obtenerCorreosNoLeidos,
+  marcarCorreoLeido,
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
 } = require("../services/outlook.service");
@@ -157,20 +159,32 @@ async function procesarCorreosNoLeidos(req, res) {
           nombreSolicitante,
           tecnicoId,
         );
-        // Process attachments from the email and upload them to GLPI
+        // Procesar adjuntos del correo y subirlos a GLPI
+        let adjuntosSubidos = 0;
+        let errorAdjuntos;
         try {
           const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
           for (const adj of adjuntos) {
-            // Only handle file attachments with contentBytes
-            if (adj.contentBytes && adj.name) {
+            try {
+              // Solo procesar adjuntos de tipo archivo (no itemAttachment ni referenceAttachment)
+              if (adj["@odata.type"] !== "#microsoft.graph.fileAttachment" && !adj.contentBytes) {
+                continue;
+              }
+              // Obtener detalle completo con contentBytes
               const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
-              const mime = adj.contentType || 'application/octet-stream';
-              const docId = await subirDocumentoGLPI(detalle.name || adj.name, detalle.contentBytes, mime);
+              if (!detalle.contentBytes) continue;
+              const nombre = detalle.name || adj.name || "adjunto";
+              const mime = detalle.contentType || adj.contentType || "application/octet-stream";
+              const docId = await subirDocumentoGLPI(nombre, detalle.contentBytes, mime);
               await vincularDocumentoATicket(ticket.id, docId);
+              adjuntosSubidos++;
+            } catch (adjError) {
+              console.error(`Error subiendo adjunto ${adj.name}:`, adjError.response?.data || adjError.message);
             }
           }
         } catch (attachError) {
-          console.error('Error processing attachments:', attachError);
+          errorAdjuntos = attachError.response?.data || attachError.message;
+          console.error("Error obteniendo adjuntos del correo:", errorAdjuntos);
         }
 
         // Reglas: si se asigna a X, también asignar a Y
