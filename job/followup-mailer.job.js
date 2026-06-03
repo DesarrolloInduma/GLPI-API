@@ -76,26 +76,6 @@ function eventoDesdeSolucion(solucion) {
   };
 }
 
-function fechaGLPIComoDate(fecha) {
-  const match = String(fecha || "").match(
-    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
-  );
-
-  if (!match) return null;
-
-  const [, year, month, day, hour, minute, second] = match.map(Number);
-  return new Date(year, month - 1, day, hour, minute, second);
-}
-
-function esEventoReciente(evento) {
-  const minutos = Number(process.env.GLPI_INITIAL_NOTIFY_MINUTES || 15);
-  const fechaEvento = fechaGLPIComoDate(evento.fecha);
-
-  if (!fechaEvento) return false;
-
-  return Date.now() - fechaEvento.getTime() <= minutos * 60 * 1000;
-}
-
 async function enviarSeguimientosNuevos() {
   const [seguimientos, soluciones] = await Promise.all([
     obtenerSeguimientosRecientesGLPI(50),
@@ -109,26 +89,20 @@ async function enviarSeguimientosNuevos() {
 
   const estado = leerEstado();
 
-  let candidatos = eventos;
-
   if (!estado.inicializado) {
-    const recientes = eventos.filter(esEventoReciente);
-    const historicos = eventos.filter((evento) => !esEventoReciente(evento));
-
     marcarSeguimientosEnviados(
-      historicos.map((evento) => evento.id),
+      eventos.map((evento) => evento.id),
       true
     );
 
     console.log(
-      `Monitor inicializado: ${historicos.length} eventos historicos ignorados, ${recientes.length} recientes por notificar.`
+      `Monitor inicializado: ${eventos.length} eventos existentes ignorados. Solo se notificaran respuestas nuevas.`
     );
-
-    candidatos = recientes;
+    return [];
   }
 
   const enviados = [];
-  const nuevos = candidatos
+  const nuevos = eventos
     .filter((evento) => !seguimientoYaEnviado(evento.id))
     .sort((a, b) => Number(a.numericId) - Number(b.numericId));
 
