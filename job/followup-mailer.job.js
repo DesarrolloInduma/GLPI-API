@@ -216,6 +216,8 @@ async function enviarSeguimientosNuevos() {
 }
 
 function iniciarJobSeguimientos() {
+  console.log("Iniciando monitor de respuestas GLPI...");
+
   inicializarMonitorSeguimientos().catch((error) => {
     console.error("Error inicializando monitor de respuestas:", error.message);
   });

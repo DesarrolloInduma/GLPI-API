@@ -77,6 +77,7 @@ app.use(
 );
 
 iniciarJobTickets();
+console.log("Activando monitor de respuestas GLPI...");
 iniciarJobSeguimientos();
 
 app.get("/", (req, res) => {
