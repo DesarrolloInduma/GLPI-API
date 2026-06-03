@@ -28,7 +28,7 @@ async function obtenerTickets(req, res) {
   } catch (error) {
     return res.status(500).json({
       ok: false,
-      error: error.message,
+      error: error.message, url: error.config?.url
     });
   }
 }

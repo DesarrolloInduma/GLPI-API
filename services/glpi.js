@@ -112,23 +112,33 @@ function nombreEstaDuplicado(usuario, email) {
 }
 
 async function corregirNombreUsuario(userId, email, nombreDisplay, sessionToken) {
-  const usuario = await obtenerUsuario(userId, sessionToken);
+  let usuario;
+  try {
+    usuario = await obtenerUsuario(userId, sessionToken);
+  } catch (error) {
+    console.warn(`No se pudo obtener el usuario ${userId} para corregir el nombre: ${error.response?.status}`);
+    return userId; // Skip name correction if we can't fetch the user
+  }
 
   if (!nombreEstaDuplicado(usuario, email)) return userId;
 
   const { firstname, realname } = nombreDesdeCorreo(email, nombreDisplay);
 
-  await axios.put(
-    `${process.env.GLPI_URL}/User/${userId}`,
-    {
-      input: {
-        id: userId,
-        firstname,
-        realname,
+  try {
+    await axios.put(
+      `${process.env.GLPI_URL}/User/${userId}`,
+      {
+        input: {
+          id: userId,
+          firstname,
+          realname,
+        },
       },
-    },
-    { headers: headersGLPI(sessionToken) }
-  );
+      { headers: headersGLPI(sessionToken) }
+    );
+  } catch (error) {
+    console.warn(`No se pudo actualizar el nombre del usuario ${userId}: ${error.response?.status}`);
+  }
 
   return userId;
 }
