@@ -50,6 +50,45 @@ async function obtenerCorreoPorId(id) {
   }
 }
 
+// New: Get list of attachments for a message
+async function obtenerAdjuntosDeCorreo(messageId) {
+  try {
+    const token = await getAccessToken();
+    const response = await axios.get(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/attachments`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    // Returns array of attachment objects
+    return response.data.value ?? [];
+  } catch (error) {
+    console.error('Error obteniendo adjuntos:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// New: Get detailed attachment (includes contentBytes for fileAttachment)
+async function obtenerDetalleAdjunto(messageId, attachmentId) {
+  try {
+    const token = await getAccessToken();
+    const response = await axios.get(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/attachments/${attachmentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error obteniendo detalle de adjunto:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 async function obtenerCorreosNoLeidos() {
   try {
     const token = await getAccessToken();
@@ -99,4 +138,6 @@ module.exports = {
   obtenerCorreoPorId,
   obtenerCorreosNoLeidos,
   marcarCorreoLeido,
+  obtenerAdjuntosDeCorreo,
+  obtenerDetalleAdjunto,
 };

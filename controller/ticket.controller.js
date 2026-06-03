@@ -5,12 +5,14 @@ const {
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
+  subirDocumentoGLPI,
+  vincularDocumentoATicket,
 } = require("../services/glpi");
 
 const {
   obtenerCorreoPorId,
-  obtenerCorreosNoLeidos,
-  marcarCorreoLeido,
+  obtenerAdjuntosDeCorreo,
+  obtenerDetalleAdjunto,
 } = require("../services/outlook.service");
 
 async function obtenerTickets(req, res) {
@@ -155,6 +157,21 @@ async function procesarCorreosNoLeidos(req, res) {
           nombreSolicitante,
           tecnicoId,
         );
+        // Process attachments from the email and upload them to GLPI
+        try {
+          const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
+          for (const adj of adjuntos) {
+            // Only handle file attachments with contentBytes
+            if (adj.contentBytes && adj.name) {
+              const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
+              const mime = adj.contentType || 'application/octet-stream';
+              const docId = await subirDocumentoGLPI(detalle.name || adj.name, detalle.contentBytes, mime);
+              await vincularDocumentoATicket(ticket.id, docId);
+            }
+          }
+        } catch (attachError) {
+          console.error('Error processing attachments:', attachError);
+        }
 
         // Reglas: si se asigna a X, también asignar a Y
         const asignacionDoble = {
