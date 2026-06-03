@@ -10,7 +10,6 @@ const {
 const { enviarCorreo } = require("../services/outlook.service");
 
 const {
-  leerEstado,
   seguimientoYaEnviado,
   marcarSeguimientosEnviados,
   guardarBaseline,
@@ -29,6 +28,7 @@ const baselineIds = {
   followup: null,
   solution: null,
 };
+let monitorInicializado = false;
 
 const EVENTOS_POR_REVISION = Number(process.env.GLPI_EVENTOS_POR_REVISION || 200);
 
@@ -108,45 +108,41 @@ function eventoPosteriorALineaBase(evento) {
   return evento.numericId > Number(baselineIds[evento.clase] || 0);
 }
 
-async function enviarSeguimientosNuevos() {
+async function obtenerEventosGLPI() {
   const [seguimientos, soluciones] = await Promise.all([
     obtenerSeguimientosRecientesGLPI(EVENTOS_POR_REVISION),
     obtenerSolucionesRecientesGLPI(EVENTOS_POR_REVISION),
   ]);
 
-  const eventos = [
+  return [
     ...seguimientos.filter(esSeguimientoDeTicketPublico).map(eventoDesdeSeguimiento),
     ...soluciones.filter(esSolucionDeTicket).map(eventoDesdeSolucion),
   ];
+}
 
-  const estado = leerEstado();
+async function inicializarMonitorSeguimientos() {
+  const eventos = await obtenerEventosGLPI();
 
-  if (baselineIds.followup === null || baselineIds.solution === null) {
-    establecerLineaBase(eventos);
-    guardarBaseline(baselineIds);
-    marcarSeguimientosEnviados(
-      eventos.map((evento) => evento.id),
-      true
-    );
-    console.log(
-      `Monitor inicializado: followup>${baselineIds.followup}, solution>${baselineIds.solution}. Solo se notificaran eventos nuevos.`
-    );
+  establecerLineaBase(eventos);
+  guardarBaseline(baselineIds);
+  marcarSeguimientosEnviados(
+    eventos.map((evento) => evento.id),
+    true
+  );
+  monitorInicializado = true;
+
+  console.log(
+    `Monitor de respuestas listo: followup>${baselineIds.followup}, solution>${baselineIds.solution}. Solo se notificaran eventos nuevos.`
+  );
+}
+
+async function enviarSeguimientosNuevos() {
+  if (!monitorInicializado) {
+    await inicializarMonitorSeguimientos();
     return [];
   }
 
-  if (!estado.inicializado) {
-    establecerLineaBase(eventos);
-    guardarBaseline(baselineIds);
-    marcarSeguimientosEnviados(
-      eventos.map((evento) => evento.id),
-      true
-    );
-
-    console.log(
-      `Monitor inicializado: ${eventos.length} eventos existentes ignorados. Solo se notificaran respuestas nuevas.`
-    );
-    return [];
-  }
+  const eventos = await obtenerEventosGLPI();
 
   const eventosViejosNoRegistrados = eventos.filter(
     (evento) =>
@@ -220,6 +216,10 @@ async function enviarSeguimientosNuevos() {
 }
 
 function iniciarJobSeguimientos() {
+  inicializarMonitorSeguimientos().catch((error) => {
+    console.error("Error inicializando monitor de respuestas:", error.message);
+  });
+
   cron.schedule("* * * * *", async () => {
     try {
       const enviados = await enviarSeguimientosNuevos();
