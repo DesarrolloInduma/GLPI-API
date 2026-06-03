@@ -255,6 +255,18 @@ async function agregarRespuestaTicketGLPI(ticketId, contenido) {
   return response.data;
 }
 
+async function obtenerSeguimientosRecientesGLPI(limit = 50) {
+  const sessionToken = await iniciarSesionGLPI();
+  const rangeEnd = Math.max(Number(limit) || 50, 1) - 1;
+
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/ITILFollowup?range=0-${rangeEnd}&sort=date_creation&order=DESC`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return normalizarListaGLPI(response.data);
+}
+
 function normalizarListaGLPI(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.data)) return data.data;
@@ -444,6 +456,7 @@ module.exports = {
   crearTicketGLPI,
   obtenerSolicitanteTicketGLPI,
   agregarRespuestaTicketGLPI,
+  obtenerSeguimientosRecientesGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,

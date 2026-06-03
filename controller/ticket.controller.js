@@ -21,6 +21,10 @@ const {
   enviarCorreo,
 } = require("../services/outlook.service");
 
+const {
+  marcarSeguimientosEnviados,
+} = require("../services/followup-state");
+
 const ESTADOS_TICKET = {
   1: "Nuevo",
   2: "En curso (asignado)",
@@ -156,6 +160,10 @@ async function responderTicket(req, res) {
     `;
 
     await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+
+    if (seguimiento?.id) {
+      marcarSeguimientosEnviados([seguimiento.id], true);
+    }
 
     return res.json({
       ok: true,
