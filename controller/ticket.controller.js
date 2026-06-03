@@ -103,7 +103,7 @@ async function procesarCorreosNoLeidos(req, res) {
     for (const correo of correos) {
       try {
         const asunto = correo.subject || "Sin asunto";
-        const descripcion = correo.bodyPreview || "Sin contenido";
+        let descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
 
         const email =
           correo.from?.emailAddress?.address ||
@@ -152,32 +152,34 @@ async function procesarCorreosNoLeidos(req, res) {
           }
         }
 
-        const ticket = await crearTicketGLPI(
-          asunto,
-          descripcion,
-          email,
-          nombreSolicitante,
-          tecnicoId,
-        );
-        // Procesar adjuntos del correo y subirlos a GLPI
+        // Obtener y subir adjuntos ANTES de crear el ticket para poder incluirlos en el HTML
         let adjuntosSubidos = 0;
         let errorAdjuntos;
+        const docIdsParaVincular = [];
         try {
           const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
           for (const adj of adjuntos) {
             try {
-              // Solo procesar adjuntos de tipo archivo (no itemAttachment ni referenceAttachment)
               if (adj["@odata.type"] !== "#microsoft.graph.fileAttachment" && !adj.contentBytes) {
                 continue;
               }
-              // Obtener detalle completo con contentBytes
               const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
               if (!detalle.contentBytes) continue;
+              
               const nombre = detalle.name || adj.name || "adjunto";
               const mime = detalle.contentType || adj.contentType || "application/octet-stream";
+              
               const docId = await subirDocumentoGLPI(nombre, detalle.contentBytes, mime);
-              await vincularDocumentoATicket(ticket.id, docId);
+              docIdsParaVincular.push(docId);
               adjuntosSubidos++;
+
+              // Si es una imagen inline, reemplazar el 'cid:' en el HTML por la URL del documento en GLPI
+              if (adj.isInline && adj.contentId && correo.body?.contentType === 'html') {
+                const baseUrl = String(process.env.GLPI_URL).replace('/apirest.php', '');
+                const docUrl = `${baseUrl}/front/document.send.php?docid=${docId}`;
+                const cidRegex = new RegExp(`cid:${adj.contentId}`, 'gi');
+                descripcion = descripcion.replace(cidRegex, docUrl);
+              }
             } catch (adjError) {
               console.error(`Error subiendo adjunto ${adj.name}:`, adjError.response?.data || adjError.message);
             }
@@ -185,6 +187,25 @@ async function procesarCorreosNoLeidos(req, res) {
         } catch (attachError) {
           errorAdjuntos = attachError.response?.data || attachError.message;
           console.error("Error obteniendo adjuntos del correo:", errorAdjuntos);
+        }
+
+        const ticket = await crearTicketGLPI(
+          asunto,
+          descripcion, // Ahora el HTML tiene las URLs de las imágenes inline actualizadas
+          email,
+          nombreSolicitante,
+          tecnicoId,
+        );
+
+        // Vincular los documentos subidos al nuevo ticket
+        if (ticket?.id) {
+          for (const docId of docIdsParaVincular) {
+            try {
+              await vincularDocumentoATicket(ticket.id, docId);
+            } catch (e) {
+              console.error(`Error vinculando doc ${docId} al ticket ${ticket.id}:`, e.message);
+            }
+          }
         }
 
         // Reglas: si se asigna a X, también asignar a Y
