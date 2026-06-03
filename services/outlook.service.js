@@ -133,6 +133,42 @@ async function marcarCorreoLeido(id) {
   }
 }
 
+async function enviarCorreo(destinatario, asunto, contenidoHtml) {
+  try {
+    const token = await getAccessToken();
+
+    await axios.post(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/sendMail`,
+      {
+        message: {
+          subject: asunto,
+          body: {
+            contentType: "HTML",
+            content: contenidoHtml,
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: destinatario,
+              },
+            },
+          ],
+        },
+        saveToSentItems: true,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   obtenerCorreos,
   obtenerCorreoPorId,
@@ -140,4 +176,5 @@ module.exports = {
   marcarCorreoLeido,
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
+  enviarCorreo,
 };

@@ -189,6 +189,16 @@ async function obtenerTicketsGLPI() {
   return response.data;
 }
 
+async function obtenerTicketGLPI(ticketId) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const response = await axios.get(`${process.env.GLPI_URL}/Ticket/${ticketId}`, {
+    headers: headersGLPI(sessionToken),
+  });
+
+  return response.data;
+}
+
 async function obtenerUsersGLPI() {
   const sessionToken = await iniciarSesionGLPI();
 
@@ -197,6 +207,52 @@ async function obtenerUsersGLPI() {
   });
 
   return normalizarListaGLPI(response.data);
+}
+
+async function obtenerSolicitanteTicketGLPI(ticketId) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/Ticket/${ticketId}/Ticket_User`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  const usuariosTicket = normalizarListaGLPI(response.data);
+  const solicitante =
+    usuariosTicket.find((u) => Number(u?.type) === 1) || usuariosTicket[0];
+
+  if (!solicitante?.users_id) return null;
+
+  const emails = await obtenerUserEmailsGLPI(solicitante.users_id, sessionToken);
+  const emailPrincipal =
+    emails.find((e) => e?.is_default === 1 || e?.is_default === true) ||
+    emails[0];
+
+  if (!emailPrincipal?.email) return null;
+
+  return {
+    userId: solicitante.users_id,
+    email: emailPrincipal.email,
+  };
+}
+
+async function agregarRespuestaTicketGLPI(ticketId, contenido) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  const response = await axios.post(
+    `${process.env.GLPI_URL}/ITILFollowup`,
+    {
+      input: {
+        itemtype: "Ticket",
+        items_id: ticketId,
+        content: contenido,
+        is_private: 0,
+      },
+    },
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return response.data;
 }
 
 function normalizarListaGLPI(data) {
@@ -382,9 +438,12 @@ async function vincularDocumentoATicket(ticketId, documentId) {
 
 module.exports = {
   obtenerTicketsGLPI,
+  obtenerTicketGLPI,
   obtenerUsersGLPI,
   obtenerUsersConEmailsGLPI,
   crearTicketGLPI,
+  obtenerSolicitanteTicketGLPI,
+  agregarRespuestaTicketGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,

@@ -1,7 +1,10 @@
 const {
   obtenerTicketsGLPI,
+  obtenerTicketGLPI,
   crearTicketGLPI,
   obtenerUsersGLPI,
+  obtenerSolicitanteTicketGLPI,
+  agregarRespuestaTicketGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
@@ -15,7 +18,30 @@ const {
   marcarCorreoLeido,
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
+  enviarCorreo,
 } = require("../services/outlook.service");
+
+const ESTADOS_TICKET = {
+  1: "Nuevo",
+  2: "En curso (asignado)",
+  3: "En curso (planificado)",
+  4: "En espera",
+  5: "Resuelto",
+  6: "Cerrado",
+};
+
+function obtenerNombreEstadoTicket(status) {
+  return ESTADOS_TICKET[Number(status)] || `Estado ${status}`;
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 async function obtenerTickets(req, res) {
   try {
@@ -90,6 +116,60 @@ async function crearTicketDesdeCorreo(req, res) {
     return res.status(500).json({
       ok: false,
       error: error.message,
+    });
+  }
+}
+
+async function responderTicket(req, res) {
+  try {
+    const { id } = req.params;
+    const respuesta = req.body.respuesta || req.body.content || req.body.contenido;
+
+    if (!respuesta || !String(respuesta).trim()) {
+      return res.status(400).json({
+        ok: false,
+        error: "Falta la respuesta del ticket",
+      });
+    }
+
+    const ticket = await obtenerTicketGLPI(id);
+    const seguimiento = await agregarRespuestaTicketGLPI(id, respuesta);
+    const solicitante = await obtenerSolicitanteTicketGLPI(id);
+
+    if (!solicitante?.email) {
+      return res.status(404).json({
+        ok: false,
+        error: "No se encontró el correo del remitente/solicitante del ticket",
+        seguimiento,
+      });
+    }
+
+    const estado = obtenerNombreEstadoTicket(ticket.status);
+    const asunto = `Respuesta al ticket #${id} - ${ticket.name || "Sin asunto"}`;
+    const respuestaCorreo = escaparHtml(respuesta).replace(/\r?\n/g, "<br>");
+    const contenidoCorreo = `
+      <p>Hola,</p>
+      <p>Se agregó una respuesta a tu caso <strong>#${escaparHtml(id)}</strong>.</p>
+      <p><strong>Estado actual:</strong> ${escaparHtml(estado)}</p>
+      <hr>
+      <div>${respuestaCorreo}</div>
+    `;
+
+    await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+
+    return res.json({
+      ok: true,
+      ticketId: Number(id),
+      estado,
+      destinatario: solicitante.email,
+      seguimiento,
+    });
+  } catch (error) {
+    console.error(error.response?.data || error);
+
+    return res.status(500).json({
+      ok: false,
+      error: error.response?.data?.error?.message || error.message,
     });
   }
 }
@@ -310,6 +390,7 @@ module.exports = {
   obtenerTickets,
   crearTicket,
   crearTicketDesdeCorreo,
+  responderTicket,
   procesarCorreosNoLeidos,
   obtenerUsers,
 };
