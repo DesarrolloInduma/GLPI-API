@@ -156,8 +156,10 @@ async function responderTicket(req, res) {
       <p>Se agregó una respuesta a tu caso <strong>#${escaparHtml(id)}</strong>.</p>
       <p><strong>Estado actual:</strong> ${escaparHtml(estado)}</p>
       <hr>
-      <div>${respuestaCorreo}</div>
-      <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada resolvió el inconveniente reportado para que podamos proceder a cerrar el ticket. Si aún necesita asistencia, responda a este mensaje con más detalles y lo atenderemos con prioridad.</p>
+      <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
+        ${respuestaCorreo}
+        <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada resolvió el inconveniente reportado para que podamos proceder a cerrar el ticket. Si aún necesita asistencia, responda a este mensaje con más detalles y lo atenderemos con prioridad.</p>
+      </div>
     `;
 
     await enviarCorreo(solicitante.email, asunto, contenidoCorreo);

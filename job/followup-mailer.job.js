@@ -192,10 +192,10 @@ async function enviarSeguimientosNuevos() {
           <p><strong>Nueva ${escaparHtml(evento.tipo)}:</strong></p>
           <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
             ${evento.contenido}
+            <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada ha resuelto el problema para poder dar por cerrado el ticket. Si el inconveniente persiste, responda a este correo con la información adicional y lo revisaremos nuevamente.</p>
           </div>
         </div>
         
-        <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada ha resuelto el problema para poder dar por cerrado el ticket. Si el inconveniente persiste, responda a este correo con la información adicional y lo revisaremos nuevamente.</p>
         <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
         <p style="font-size: 12px; color: #666;">Este es un correo automático. Por favor, no responda a este correo.</p>
       `;
