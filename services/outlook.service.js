@@ -94,7 +94,7 @@ async function obtenerCorreosNoLeidos() {
     const token = await getAccessToken();
 
     const response = await axios.get(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages?$filter=isRead eq false&$top=3`,
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages?$filter=isRead eq false&$top=50&$orderby=receivedDateTime desc`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
