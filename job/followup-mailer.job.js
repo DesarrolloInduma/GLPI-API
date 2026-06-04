@@ -202,6 +202,28 @@ async function enviarSeguimientosNuevos() {
           <p style="margin-top: 15px;"><strong>Tu mensaje original:</strong></p>
           <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
             ${contenidoOriginal}
+            
+            ${(() => {
+              try {
+                const baseUrl = String(process.env.GLPI_URL || "").replace('/apirest.php', '');
+                const matches = Array.from(new Set((String(contenidoOriginal || '').match(/document\.send\.php\?docid=(\d+)/gi) || []).map(m => {
+                  const mm = /docid=(\d+)/i.exec(m);
+                  return mm ? mm[1] : null;
+                }).filter(Boolean)));
+
+                if (!matches.length) return '';
+
+                let html = '<p style="margin-top:12px;"><strong>Documentos adjuntos:</strong></p><ul>';
+                for (const id of matches) {
+                  const url = `${baseUrl}/front/document.send.php?docid=${id}`;
+                  html += `<li><a href="${url}" target="_blank" rel="noopener noreferrer">Abrir documento ${id}</a></li>`;
+                }
+                html += '</ul>';
+                return html;
+              } catch (e) {
+                return '';
+              }
+            })()}
           </div>
         </div>
         

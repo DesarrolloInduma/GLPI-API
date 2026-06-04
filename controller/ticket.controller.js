@@ -151,6 +151,30 @@ async function responderTicket(req, res) {
     const estado = obtenerNombreEstadoTicket(ticket.status);
     const asunto = `Respuesta al ticket #${id} - ${ticket.name || "Sin asunto"}`;
     const respuestaCorreo = escaparHtml(respuesta).replace(/\r?\n/g, "<br>");
+
+    // Extraer posibles enlaces a documentos en el contenido del ticket para hacerlos accesibles
+    let archivosHtml = '';
+    try {
+      const contenidoTicket = String(ticket.content || '');
+      const re = /document\.send\.php\?docid=(\d+)/gi;
+      const ids = [];
+      let mm;
+      while ((mm = re.exec(contenidoTicket)) !== null) {
+        if (mm[1] && !ids.includes(mm[1])) ids.push(mm[1]);
+      }
+      if (ids.length) {
+        const baseUrl = String(process.env.GLPI_URL || '').replace('/apirest.php', '');
+        archivosHtml = '<p style="margin-top:12px;"><strong>Documentos adjuntos:</strong></p><ul>';
+        for (const did of ids) {
+          const url = `${baseUrl}/front/document.send.php?docid=${did}`;
+          archivosHtml += `<li><a href="${url}" target="_blank" rel="noopener noreferrer">Abrir documento ${did}</a></li>`;
+        }
+        archivosHtml += '</ul>';
+      }
+    } catch (e) {
+      archivosHtml = '';
+    }
+
     const contenidoCorreo = `
       <p>Hola,</p>
       <p>Se agregó una respuesta a tu caso <strong>#${escaparHtml(id)}</strong>.</p>
@@ -158,6 +182,7 @@ async function responderTicket(req, res) {
       <hr>
       <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
         ${respuestaCorreo}
+        ${archivosHtml}
         <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada resolvió el inconveniente reportado para que podamos proceder a cerrar el ticket. Si aún necesita asistencia, responda a este mensaje con más detalles y lo atenderemos con prioridad.</p>
       </div>
     `;
