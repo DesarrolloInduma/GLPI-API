@@ -269,6 +269,20 @@ async function procesarCorreosNoLeidos(req, res) {
           }
         }
 
+        // Evitar crear el mismo ticket dos veces si este mensaje ya fue procesado.
+        const ticketExistente = await buscarTicketIdPorMessageId(correo.id);
+        if (ticketExistente) {
+          console.log(
+            `Correo ${correo.id} ya fue procesado y está vinculado al ticket ${ticketExistente}. Omitiendo creación duplicada.`
+          );
+          try {
+            await marcarCorreoLeido(correo.id);
+          } catch (error) {
+            console.error(`No se pudo marcar como leído el correo ${correo.id}:`, error.response?.data || error.message || error);
+          }
+          continue;
+        }
+
         const asunto = correo.subject || "Sin asunto";
         let descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
 
