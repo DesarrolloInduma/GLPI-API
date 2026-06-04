@@ -47,6 +47,24 @@ function escaparHtml(valor) {
     .replace(/'/g, "&#39;");
 }
 
+function extraerContenidoHtml(html) {
+  if (!html || typeof html !== "string") return "";
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    return bodyMatch[1];
+  }
+
+  const htmlMatch = html.match(/<html[^>]*>([\s\S]*?)<\/html>/i);
+  if (htmlMatch) {
+    let inner = htmlMatch[1];
+    inner = inner.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "");
+    return inner;
+  }
+
+  return html;
+}
+
 async function obtenerTickets(req, res) {
   try {
     const tickets = await obtenerTicketsGLPI();
@@ -151,6 +169,7 @@ async function responderTicket(req, res) {
     const estado = obtenerNombreEstadoTicket(ticket.status);
     const asunto = `Respuesta al ticket #${id} - ${ticket.name || "Sin asunto"}`;
     const respuestaCorreo = escaparHtml(respuesta).replace(/\r?\n/g, "<br>");
+    const contenidoOriginal = extraerContenidoHtml(ticket.content || "Sin descripción");
 
     // Extraer posibles enlaces a documentos en el contenido del ticket para hacerlos accesibles
     let archivosHtml = '';
@@ -181,6 +200,11 @@ async function responderTicket(req, res) {
       <p><strong>Estado actual:</strong> ${escaparHtml(estado)}</p>
       <hr>
       <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
+        <p style="margin-bottom: 12px;"><strong>Mensaje original del remitente:</strong></p>
+        <div style="background-color: white; padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+          ${contenidoOriginal}
+        </div>
+        <p style="margin-bottom: 12px;"><strong>Respuesta del equipo de soporte:</strong></p>
         ${respuestaCorreo}
         ${archivosHtml}
         <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada resolvió el inconveniente reportado para que podamos proceder a cerrar el ticket. Si aún necesita asistencia, responda a este mensaje con más detalles y lo atenderemos con prioridad.</p>
