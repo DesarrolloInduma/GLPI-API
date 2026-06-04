@@ -157,6 +157,7 @@ async function responderTicket(req, res) {
       <p><strong>Estado actual:</strong> ${escaparHtml(estado)}</p>
       <hr>
       <div>${respuestaCorreo}</div>
+      <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada resolvió el inconveniente reportado para que podamos proceder a cerrar el ticket. Si aún necesita asistencia, responda a este mensaje con más detalles y lo atenderemos con prioridad.</p>
     `;
 
     await enviarCorreo(solicitante.email, asunto, contenidoCorreo);

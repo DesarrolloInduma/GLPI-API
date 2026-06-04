@@ -195,6 +195,7 @@ async function enviarSeguimientosNuevos() {
           </div>
         </div>
         
+        <p style="margin-top: 16px;">Por favor confirme si la solución proporcionada ha resuelto el problema para poder dar por cerrado el ticket. Si el inconveniente persiste, responda a este correo con la información adicional y lo revisaremos nuevamente.</p>
         <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
         <p style="font-size: 12px; color: #666;">Este es un correo automático. Por favor, no responda a este correo.</p>
       `;
