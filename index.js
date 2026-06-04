@@ -57,6 +57,10 @@ const {
   iniciarJobSeguimientos
 } = require("./job/followup-mailer.job");
 
+const {
+  iniciarJobReplies
+} = require("./job/reply-processor.job");
+
 console.log("Servicio iniciado...");
 
 app.use(express.json());
@@ -79,6 +83,8 @@ app.use(
 iniciarJobTickets();
 console.log("Activando monitor de respuestas GLPI...");
 iniciarJobSeguimientos();
+console.log("Activando procesador de respuestas de usuario...");
+iniciarJobReplies();
 
 app.get("/", (req, res) => {
   res.send("GLPI Job Running");
