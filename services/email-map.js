@@ -25,6 +25,12 @@ async function obtenerMessageIdPorTicket(ticketId) {
   return mapa[String(ticketId)] || null;
 }
 
+async function buscarTicketIdPorMessageId(messageId) {
+  const mapa = await leerMapa();
+  const entry = Object.entries(mapa).find(([, msgId]) => msgId === messageId);
+  return entry ? entry[0] : null;
+}
+
 async function guardarMessageIdParaTicket(ticketId, messageId) {
   const mapa = await leerMapa();
   mapa[String(ticketId)] = messageId;
@@ -33,5 +39,6 @@ async function guardarMessageIdParaTicket(ticketId, messageId) {
 
 module.exports = {
   obtenerMessageIdPorTicket,
+  buscarTicketIdPorMessageId,
   guardarMessageIdParaTicket,
 };

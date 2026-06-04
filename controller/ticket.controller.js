@@ -25,6 +25,7 @@ const {
 const {
   obtenerMessageIdPorTicket,
   guardarMessageIdParaTicket,
+  buscarTicketIdPorMessageId,
 } = require("../services/email-map");
 
 const {
@@ -257,10 +258,15 @@ async function procesarCorreosNoLeidos(req, res) {
 
     for (const correo of correos) {
       try {
-        // Si es una respuesta en hilo, la procesa el job de replies y no debe crear un ticket nuevo.
+        // Si es una respuesta en hilo a un ticket ya mapeado, la procesa el job de replies y no debe crear un ticket nuevo.
         if (correo.parentMessageId) {
-          console.log(`Saltando correo ${correo.id} con parentMessageId=${correo.parentMessageId} para evitar crear ticket duplicado.`);
-          continue;
+          const ticketRelacionado = await buscarTicketIdPorMessageId(correo.parentMessageId);
+          if (ticketRelacionado) {
+            console.log(
+              `Saltando correo ${correo.id} con parentMessageId=${correo.parentMessageId} porque ya está vinculado al ticket ${ticketRelacionado}`
+            );
+            continue;
+          }
         }
 
         const asunto = correo.subject || "Sin asunto";
