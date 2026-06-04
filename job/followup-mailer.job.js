@@ -174,10 +174,29 @@ async function enviarSeguimientosNuevos() {
       const asunto = `Respuesta al ticket #${ticketId} - ${ticket.name || "Sin asunto"}`;
       const contenidoCorreo = `
         <p>Hola,</p>
-        <p>Se agregó una ${escaparHtml(evento.tipo)} a tu caso <strong>#${escaparHtml(ticketId)}</strong>.</p>
-        <p><strong>Estado actual:</strong> ${escaparHtml(estadoTicket)}</p>
-        <hr>
-        <div>${evento.contenido}</div>
+        <p>Se agregó una <strong>${escaparHtml(evento.tipo)}</strong> a tu caso <strong>#${ticketId}</strong>.</p>
+        
+        <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid #007bff; margin: 15px 0;">
+          <p><strong>Asunto del ticket:</strong></p>
+          <p style="margin: 10px 0;">${escaparHtml(ticket.name || "Sin asunto")}</p>
+          
+          <p style="margin-top: 15px;"><strong>Tu mensaje original:</strong></p>
+          <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
+            ${escaparHtml(ticket.content || "Sin descripción")}
+          </div>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <p><strong>Estado actual del ticket:</strong> <span style="background-color: #e7f3ff; padding: 5px 10px; border-radius: 3px;">${escaparHtml(estadoTicket)}</span></p>
+          
+          <p><strong>Nueva ${escaparHtml(evento.tipo)}:</strong></p>
+          <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
+            ${evento.contenido}
+          </div>
+        </div>
+        
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+        <p style="font-size: 12px; color: #666;">Este es un correo automático. Por favor, no responda a este correo.</p>
       `;
 
       await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
