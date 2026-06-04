@@ -239,7 +239,6 @@ async function enviarSeguimientosNuevos() {
         </div>
         
         <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-        <p style="font-size: 12px; color: #666;">Este es un correo automático. Por favor, no responda a este correo.</p>
       `;
 
       const originalMessageId = await obtenerMessageIdPorTicket(ticketId);
