@@ -169,6 +169,58 @@ async function enviarCorreo(destinatario, asunto, contenidoHtml) {
   }
 }
 
+async function responderCorreoEnHilo(messageId, contenidoHtml) {
+  try {
+    const token = await getAccessToken();
+
+    const primeraRespuesta = await axios.post(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/createReply`,
+      { comment: "" },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const draftId = primeraRespuesta.data?.id;
+    if (!draftId) {
+      throw new Error("No se pudo crear la respuesta en borrador");
+    }
+
+    await axios.patch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${draftId}`,
+      {
+        body: {
+          contentType: "HTML",
+          content: contenidoHtml,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    await axios.post(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${draftId}/send`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   obtenerCorreos,
   obtenerCorreoPorId,
@@ -177,4 +229,5 @@ module.exports = {
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
   enviarCorreo,
+  responderCorreoEnHilo,
 };

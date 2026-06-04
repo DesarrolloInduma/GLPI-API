@@ -7,7 +7,8 @@ const {
   obtenerSolicitanteTicketGLPI,
 } = require("../services/glpi");
 
-const { enviarCorreo } = require("../services/outlook.service");
+const { enviarCorreo, responderCorreoEnHilo } = require("../services/outlook.service");
+const { obtenerMessageIdPorTicket } = require("../services/email-map");
 
 const {
   seguimientoYaEnviado,
@@ -189,7 +190,7 @@ async function enviarSeguimientosNuevos() {
       }
 
       const estadoTicket = obtenerNombreEstadoTicket(ticket.status);
-      const asunto = `Respuesta al ticket #${ticketId} - ${ticket.name || "Sin asunto"}`;
+      const asunto = `Re: ${ticket.name || "Sin asunto"}`;
       const contenidoOriginal = extraerContenidoHtml(ticket.content || "Sin descripción");
       const contenidoCorreo = `
         <p>Hola,</p>
@@ -241,7 +242,12 @@ async function enviarSeguimientosNuevos() {
         <p style="font-size: 12px; color: #666;">Este es un correo automático. Por favor, no responda a este correo.</p>
       `;
 
-      await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+      const originalMessageId = await obtenerMessageIdPorTicket(ticketId);
+      if (originalMessageId) {
+        await responderCorreoEnHilo(originalMessageId, contenidoCorreo);
+      } else {
+        await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+      }
       marcarSeguimientosEnviados([evento.id], true);
 
       enviados.push({

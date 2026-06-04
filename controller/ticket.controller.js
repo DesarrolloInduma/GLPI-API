@@ -19,7 +19,13 @@ const {
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
   enviarCorreo,
+  responderCorreoEnHilo,
 } = require("../services/outlook.service");
+
+const {
+  obtenerMessageIdPorTicket,
+  guardarMessageIdParaTicket,
+} = require("../services/email-map");
 
 const {
   marcarSeguimientosEnviados,
@@ -123,6 +129,10 @@ async function crearTicketDesdeCorreo(req, res) {
       nombreSolicitante,
     );
 
+    if (ticket?.id) {
+      await guardarMessageIdParaTicket(ticket.id, correo.id);
+    }
+
     return res.json({
       ok: true,
       correo: {
@@ -167,7 +177,7 @@ async function responderTicket(req, res) {
     }
 
     const estado = obtenerNombreEstadoTicket(ticket.status);
-    const asunto = `Respuesta al ticket #${id} - ${ticket.name || "Sin asunto"}`;
+    const asunto = `Re: ${ticket.name || "Sin asunto"}`;
     const respuestaCorreo = escaparHtml(respuesta).replace(/\r?\n/g, "<br>");
     const contenidoOriginal = extraerContenidoHtml(ticket.content || "Sin descripción");
 
@@ -211,7 +221,12 @@ async function responderTicket(req, res) {
       </div>
     `;
 
-    await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+    const originalMessageId = await obtenerMessageIdPorTicket(id);
+    if (originalMessageId) {
+      await responderCorreoEnHilo(originalMessageId, contenidoCorreo);
+    } else {
+      await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+    }
 
     if (seguimiento?.id) {
       marcarSeguimientosEnviados([seguimiento.id], true);
@@ -346,6 +361,10 @@ async function procesarCorreosNoLeidos(req, res) {
           nombreSolicitante,
           tecnicoId,
         );
+
+        if (ticket?.id) {
+          await guardarMessageIdParaTicket(ticket.id, correo.id);
+        }
 
         // Vincular los documentos subidos al nuevo ticket
         if (ticket?.id) {
