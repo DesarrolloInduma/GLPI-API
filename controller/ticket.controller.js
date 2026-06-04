@@ -201,42 +201,52 @@ async function procesarCorreosNoLeidos(req, res) {
         const nombreSolicitante =
           correo.from?.emailAddress?.name || correo.sender?.emailAddress?.name;
 
-        const destinatarios = Array.isArray(correo.toRecipients)
+        const toRecipients = Array.isArray(correo.toRecipients)
           ? correo.toRecipients
           : [];
+        const ccRecipients = Array.isArray(correo.ccRecipients)
+          ? correo.ccRecipients
+          : [];
+
+        const recipients = [...toRecipients, ...ccRecipients];
 
         const outlookUserLower = String(process.env.OUTLOOK_USER || "")
           .trim()
           .toLowerCase();
 
-        const tecnico = destinatarios.find((d) => {
-          const addr = d?.emailAddress?.address;
-          if (!addr) return false;
-          const addrLower = String(addr).trim().toLowerCase();
-          if (!addrLower) return false;
-          // Elegimos el primer "to" que no sea el buzón que está leyendo
-          return outlookUserLower ? addrLower !== outlookUserLower : true;
-        });
-
-        const correoTecnico = tecnico?.emailAddress?.address;
-
         let tecnicoId = 0;
         let metodoAsignacion = "none";
+        let correoTecnico = null;
 
-        if (correoTecnico) {
-          // 1) Intentar por email (UserEmail)
-          const usuarioGLPI = await buscarUsuarioGLPIPorEmail(correoTecnico);
-          tecnicoId = usuarioGLPI?.id || 0;
-          if (tecnicoId) metodoAsignacion = "email";
+        // Buscar en to y cc el primer destinatario que exista en GLPI (por email o por login)
+        for (const d of recipients) {
+          const addr = d?.emailAddress?.address;
+          if (!addr) continue;
+          const addrLower = String(addr).trim().toLowerCase();
+          if (outlookUserLower && addrLower === outlookUserLower) continue;
 
-          // 2) Fallback: si en GLPI el usuario no tiene correo, buscar por login (antes del @)
-          if (!tecnicoId) {
-            const login = String(correoTecnico).split("@")[0]?.trim();
+          // Intentar por email primero
+          const usuarioGLPI = await buscarUsuarioGLPIPorEmail(addr);
+          let id = usuarioGLPI?.id || 0;
+          let metodo = "";
+
+          if (id) {
+            metodo = "email";
+          } else {
+            // Fallback: buscar por login (parte antes del @)
+            const login = String(addr).split("@")[0]?.trim();
             if (login) {
               const userByLogin = await buscarUsuarioGLPIPorLogin(login);
-              tecnicoId = userByLogin?.id || 0;
-              if (tecnicoId) metodoAsignacion = "login";
+              id = userByLogin?.id || 0;
+              if (id) metodo = "login";
             }
+          }
+
+          if (id) {
+            tecnicoId = id;
+            metodoAsignacion = metodo || "email";
+            correoTecnico = addr;
+            break;
           }
         }
 
