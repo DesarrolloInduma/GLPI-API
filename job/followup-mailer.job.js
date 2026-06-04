@@ -182,7 +182,7 @@ async function enviarSeguimientosNuevos() {
           
           <p style="margin-top: 15px;"><strong>Tu mensaje original:</strong></p>
           <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
-            ${escaparHtml(ticket.content || "Sin descripción")}
+            ${ticket.content || "Sin descripción"}
           </div>
         </div>
         
