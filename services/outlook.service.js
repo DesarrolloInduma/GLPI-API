@@ -173,41 +173,17 @@ async function responderCorreoEnHilo(messageId, contenidoHtml) {
   try {
     const token = await getAccessToken();
 
-    const primeraRespuesta = await axios.post(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/createReply`,
-      { comment: "" },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-
-    const draftId = primeraRespuesta.data?.id;
-    if (!draftId) {
-      throw new Error("No se pudo crear la respuesta en borrador");
-    }
-
-    await axios.patch(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${draftId}`,
-      {
-        body: {
-          contentType: "HTML",
-          content: contenidoHtml,
-        },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-
     await axios.post(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${draftId}/send`,
-      {},
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/reply`,
+      {
+        message: {
+          body: {
+            contentType: "HTML",
+            content: contenidoHtml,
+          },
+        },
+        saveToSentItems: true,
+      },
       {
         headers: {
           Authorization: `Bearer ${token}`,
