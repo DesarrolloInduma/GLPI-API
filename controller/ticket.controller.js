@@ -427,10 +427,15 @@ async function procesarCorreosNoLeidos(req, res) {
           ...(errorMarcarLeido && { errorMarcarLeido }),
         });
       } catch (error) {
+        const detalleError = error.response?.data || error.message;
+        console.error(`Error procesando correo ${correo.id}:`, detalleError);
+
         resultados.push({
           correoId: correo.id,
           estado: "ERROR",
-          error: error.message,
+          error: typeof detalleError === "string" ? detalleError : JSON.stringify(detalleError),
+          url: error.config?.url,
+          status: error.response?.status,
         });
       }
     }

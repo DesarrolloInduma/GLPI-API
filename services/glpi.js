@@ -334,19 +334,32 @@ async function obtenerUsersConEmailsGLPI(limit = 50) {
 async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, tecnicoId = 0) {
   const sessionToken = await iniciarSesionGLPI();
 
-  const user = await buscarUsuarioPorEmail(email, sessionToken);
+  const emailNorm = String(email || "").trim().toLowerCase();
+  const login = emailNorm.split("@")[0] || "";
+
+  const user = await buscarUsuarioPorEmail(emailNorm, sessionToken);
 
   let userId;
 
   if (user?.id) {
     userId = await corregirNombreUsuario(
       user.id,
-      email,
+      emailNorm,
       nombreSolicitante,
       sessionToken
     );
   } else {
-    userId = await crearUsuario(email, sessionToken, nombreSolicitante);
+    const userByLogin = await buscarUsuarioGLPIPorLogin(login);
+    if (userByLogin?.id) {
+      userId = await corregirNombreUsuario(
+        userByLogin.id,
+        emailNorm,
+        nombreSolicitante,
+        sessionToken
+      );
+    } else {
+      userId = await crearUsuario(emailNorm, sessionToken, nombreSolicitante);
+    }
   }
 
   const input = {
