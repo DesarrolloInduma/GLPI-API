@@ -256,10 +256,19 @@ async function enviarSeguimientosNuevos() {
         estado: estadoTicket,
       });
     } catch (error) {
-      console.error(
-        `Error enviando evento ${evento.id} del ticket ${ticketId}:`,
-        error.response?.data || error.message
-      );
+      const detalle = error.response?.data || error.message;
+      const mensaje = typeof detalle === "string" ? detalle : JSON.stringify(detalle);
+      const esErrorPermiso =
+        String(mensaje).includes("ERROR_RIGHT_MISSING") ||
+        String(mensaje).includes("Usted no tiene permisos") ||
+        error.response?.status === 403;
+
+      if (!esErrorPermiso) {
+        console.error(
+          `Error enviando evento ${evento.id} del ticket ${ticketId}:`,
+          detalle
+        );
+      }
     }
   }
 
