@@ -257,6 +257,12 @@ async function procesarCorreosNoLeidos(req, res) {
 
     for (const correo of correos) {
       try {
+        // Si es una respuesta en hilo, la procesa el job de replies y no debe crear un ticket nuevo.
+        if (correo.parentMessageId) {
+          console.log(`Saltando correo ${correo.id} con parentMessageId=${correo.parentMessageId} para evitar crear ticket duplicado.`);
+          continue;
+        }
+
         const asunto = correo.subject || "Sin asunto";
         let descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
 
