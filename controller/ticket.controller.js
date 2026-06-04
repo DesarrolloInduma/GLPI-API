@@ -14,6 +14,7 @@ const {
 
 const {
   obtenerCorreoPorId,
+  obtenerCorreos,
   obtenerCorreosNoLeidos,
   marcarCorreoLeido,
   obtenerAdjuntosDeCorreo,
@@ -252,12 +253,40 @@ async function responderTicket(req, res) {
 
 async function procesarCorreosNoLeidos(req, res) {
   try {
-    const correos = await obtenerCorreosNoLeidos();
+    let correos = await obtenerCorreosNoLeidos();
+    console.log(`procesarCorreosNoLeidos: encontrados ${Array.isArray(correos)?correos.length:0} correos no leídos`);
+
+    // Si no hay correos no leídos, intentar procesar mensajes recientes (por ejemplo, leídos recientemente)
+    if (!Array.isArray(correos) || correos.length === 0) {
+      try {
+        console.log('No hay correos no leídos; obteniendo mensajes recientes como fallback...');
+        const todos = await obtenerCorreos();
+        const lista = Array.isArray(todos.value) ? todos.value : (Array.isArray(todos) ? todos : []);
+
+        const ahora = Date.now();
+        const MAX_AGE_MIN = Number(process.env.FALLBACK_MAX_AGE_MIN || 30);
+
+        const recientes = lista.filter((m) => {
+          try {
+            const t = new Date(m.receivedDateTime).getTime();
+            return !isNaN(t) && ahora - t <= MAX_AGE_MIN * 60 * 1000;
+          } catch (e) {
+            return false;
+          }
+        });
+
+        console.log(`Fallback: mensajes recientes encontrados=${recientes.length} (últimos ${MAX_AGE_MIN} min)`);
+        correos = recientes;
+      } catch (e) {
+        console.error('Error obteniendo mensajes recientes en fallback:', e.response?.data || e.message || e);
+      }
+    }
 
     const resultados = [];
 
     for (const correo of correos) {
       try {
+        console.log(`procesarCorreosNoLeidos: procesando mensaje id=${correo.id} parent=${correo.parentMessageId||''} subject="${(correo.subject||'').slice(0,80)}"`);
         // Si es una respuesta en hilo a un ticket ya mapeado, la procesa el job de replies y no debe crear un ticket nuevo.
         if (correo.parentMessageId) {
           const ticketRelacionado = await buscarTicketIdPorMessageId(correo.parentMessageId);
@@ -389,7 +418,10 @@ async function procesarCorreosNoLeidos(req, res) {
         );
 
         if (ticket?.id) {
+          console.log(`Ticket creado en GLPI: id=${ticket.id} (desde correo ${correo.id})`);
           await guardarMessageIdParaTicket(ticket.id, correo.id);
+        } else {
+          console.warn(`No se creó ticket desde correo ${correo.id}. respuesta crearTicketGLPI: ${JSON.stringify(ticket)}`);
         }
 
         // Vincular los documentos subidos al nuevo ticket
