@@ -36,6 +36,24 @@ function obtenerNombreEstadoTicket(status) {
   return ESTADOS_TICKET[Number(status)] || `Estado ${status}`;
 }
 
+function extraerContenidoHtml(html) {
+  if (!html || typeof html !== "string") return "";
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    return bodyMatch[1];
+  }
+
+  const htmlMatch = html.match(/<html[^>]*>([\s\S]*?)<\/html>/i);
+  if (htmlMatch) {
+    let inner = htmlMatch[1];
+    inner = inner.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "");
+    return inner;
+  }
+
+  return html;
+}
+
 function escaparHtml(valor) {
   return String(valor ?? "")
     .replace(/&/g, "&amp;")
@@ -172,6 +190,7 @@ async function enviarSeguimientosNuevos() {
 
       const estadoTicket = obtenerNombreEstadoTicket(ticket.status);
       const asunto = `Respuesta al ticket #${ticketId} - ${ticket.name || "Sin asunto"}`;
+      const contenidoOriginal = extraerContenidoHtml(ticket.content || "Sin descripción");
       const contenidoCorreo = `
         <p>Hola,</p>
         <p>Se agregó una <strong>${escaparHtml(evento.tipo)}</strong> a tu caso <strong>#${ticketId}</strong>.</p>
@@ -182,7 +201,7 @@ async function enviarSeguimientosNuevos() {
           
           <p style="margin-top: 15px;"><strong>Tu mensaje original:</strong></p>
           <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
-            ${ticket.content || "Sin descripción"}
+            ${contenidoOriginal}
           </div>
         </div>
         
