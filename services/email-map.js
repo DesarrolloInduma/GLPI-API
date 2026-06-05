@@ -92,11 +92,17 @@ async function guardarMessageIdParaTicket(ticketId, messageId, conversationId) {
   if (!mapa.conversations) mapa.conversations = {};
 
   if (messageId) {
-    mapa.messages[String(ticketId)] = messageId;
+    // No sobrescribir si ya existe un mapeo para este ticket
+    if (!mapa.messages[String(ticketId)]) {
+      mapa.messages[String(ticketId)] = messageId;
+    }
   }
 
   if (conversationId) {
-    mapa.conversations[String(conversationId)] = String(ticketId);
+    // Guardar mapeo de conversación sólo si no existe (evitar sobrescribir vínculo original)
+    if (!mapa.conversations[String(conversationId)]) {
+      mapa.conversations[String(conversationId)] = String(ticketId);
+    }
   }
 
   await guardarMapa(mapa);

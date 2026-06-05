@@ -298,11 +298,22 @@ async function procesarCorreosNoLeidos(req, res) {
 
     for (const correo of correos) {
       let lockPath = null;
+      let convLockPath = null;
       try {
         if (!correo?.id || procesadosIds.has(correo.id)) {
           continue;
         }
         procesadosIds.add(correo.id);
+
+        // Intentar adquirir lock a nivel de conversación para evitar condiciones de carrera
+        if (correo.conversationId) {
+          try {
+            convLockPath = await lockMessageId(`conv:${correo.conversationId}`);
+          } catch (lockError) {
+            console.log(`Conversación ${correo.conversationId} ya se está procesando en otra instancia, saltando mensaje ${correo.id}.`);
+            continue;
+          }
+        }
 
         try {
           lockPath = await lockMessageId(correo.id);
@@ -537,6 +548,13 @@ async function procesarCorreosNoLeidos(req, res) {
             await unlockMessageId(correo.id);
           } catch (unlockError) {
             console.error(`Error liberando lock de correo ${correo.id}:`, unlockError.message || unlockError);
+          }
+        }
+        if (convLockPath) {
+          try {
+            await unlockMessageId(`conv:${correo.conversationId}`);
+          } catch (unlockError) {
+            console.error(`Error liberando lock de conversacion ${correo.conversationId}:`, unlockError.message || unlockError);
           }
         }
       }
