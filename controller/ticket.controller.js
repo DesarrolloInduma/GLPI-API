@@ -27,6 +27,8 @@ const {
   obtenerMessageIdPorTicket,
   guardarMessageIdParaTicket,
   buscarTicketIdPorMessageId,
+  lockMessageId,
+  unlockMessageId,
 } = require("../services/email-map");
 
 const {
@@ -253,39 +255,61 @@ async function responderTicket(req, res) {
 
 async function procesarCorreosNoLeidos(req, res) {
   try {
-    let correos = await obtenerCorreosNoLeidos();
-    console.log(`procesarCorreosNoLeidos: encontrados ${Array.isArray(correos)?correos.length:0} correos no leídos`);
+    const correosNoLeidos = await obtenerCorreosNoLeidos();
+    console.log(`procesarCorreosNoLeidos: encontrados ${Array.isArray(correosNoLeidos)?correosNoLeidos.length:0} correos no leídos`);
 
-    // Si no hay correos no leídos, intentar procesar mensajes recientes (por ejemplo, leídos recientemente)
-    if (!Array.isArray(correos) || correos.length === 0) {
-      try {
-        console.log('No hay correos no leídos; obteniendo mensajes recientes como fallback...');
-        const todos = await obtenerCorreos();
-        const lista = Array.isArray(todos.value) ? todos.value : (Array.isArray(todos) ? todos : []);
+    let correos = Array.isArray(correosNoLeidos) ? [...correosNoLeidos] : [];
 
-        const ahora = Date.now();
-        const MAX_AGE_MIN = Number(process.env.FALLBACK_MAX_AGE_MIN || 30);
+    try {
+      console.log('Obteniendo mensajes recientes para procesar además de los no leídos...');
+      const todos = await obtenerCorreos();
+      const lista = Array.isArray(todos.value) ? todos.value : (Array.isArray(todos) ? todos : []);
 
-        const recientes = lista.filter((m) => {
-          try {
-            const t = new Date(m.receivedDateTime).getTime();
-            return !isNaN(t) && ahora - t <= MAX_AGE_MIN * 60 * 1000;
-          } catch (e) {
-            return false;
-          }
-        });
+      const ahora = Date.now();
+      const MAX_AGE_MIN = Number(process.env.FALLBACK_MAX_AGE_MIN || 1440);
 
-        console.log(`Fallback: mensajes recientes encontrados=${recientes.length} (últimos ${MAX_AGE_MIN} min)`);
-        correos = recientes;
-      } catch (e) {
-        console.error('Error obteniendo mensajes recientes en fallback:', e.response?.data || e.message || e);
+      const recientes = lista.filter((m) => {
+        try {
+          const t = new Date(m.receivedDateTime).getTime();
+          return !isNaN(t) && ahora - t <= MAX_AGE_MIN * 60 * 1000;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      console.log(`Mensajes recientes encontrados=${recientes.length} (últimos ${MAX_AGE_MIN} min)`);
+
+      const idsExistentes = new Set(correos.map((c) => c.id));
+      for (const mensaje of recientes) {
+        if (mensaje?.id && !idsExistentes.has(mensaje.id)) {
+          correos.push(mensaje);
+          idsExistentes.add(mensaje.id);
+        }
       }
+
+      console.log(`Total a procesar tras merge: ${correos.length}`);
+    } catch (e) {
+      console.error('Error obteniendo mensajes recientes:', e.response?.data || e.message || e);
     }
 
     const resultados = [];
+    const procesadosIds = new Set();
 
     for (const correo of correos) {
+      let lockPath = null;
       try {
+        if (!correo?.id || procesadosIds.has(correo.id)) {
+          continue;
+        }
+        procesadosIds.add(correo.id);
+
+        try {
+          lockPath = await lockMessageId(correo.id);
+        } catch (lockError) {
+          console.log(`Mensaje ${correo.id} ya se está procesando en otra instancia, saltando.`);
+          continue;
+        }
+
         console.log(`procesarCorreosNoLeidos: procesando mensaje id=${correo.id} parent=${correo.parentMessageId||''} subject="${(correo.subject||'').slice(0,80)}"`);
         // Si es una respuesta en hilo a un ticket ya mapeado, la procesa el job de replies y no debe crear un ticket nuevo.
         if (correo.parentMessageId) {
@@ -495,6 +519,14 @@ async function procesarCorreosNoLeidos(req, res) {
           url: error.config?.url,
           status: error.response?.status,
         });
+      } finally {
+        if (lockPath) {
+          try {
+            await unlockMessageId(correo.id);
+          } catch (unlockError) {
+            console.error(`Error liberando lock de correo ${correo.id}:`, unlockError.message || unlockError);
+          }
+        }
       }
     }
 
