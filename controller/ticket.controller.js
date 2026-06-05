@@ -258,7 +258,9 @@ async function procesarCorreosNoLeidos(req, res) {
   try {
     const correosNoLeidos = await obtenerCorreosNoLeidos();
     console.log(`procesarCorreosNoLeidos: encontrados ${Array.isArray(correosNoLeidos)?correosNoLeidos.length:0} correos no leídos`);
-
+    console.log(
+  `[DEBUG] Inicio proceso PID=${process.pid} ${new Date().toISOString()}`
+);
     let correos = Array.isArray(correosNoLeidos) ? [...correosNoLeidos] : [];
 
     try {
@@ -455,7 +457,9 @@ async function procesarCorreosNoLeidos(req, res) {
           errorAdjuntos = attachError.response?.data || attachError.message;
           console.error("Error obteniendo adjuntos del correo:", errorAdjuntos);
         }
-
+        console.log(
+          `[DEBUG] Crear ticket correo=${correo.id} PID=${process.pid}`
+        );
         const ticket = await crearTicketGLPI(
           asunto,
           descripcion, // Ahora el HTML tiene las URLs de las imágenes inline actualizadas
