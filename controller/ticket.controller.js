@@ -27,6 +27,7 @@ const {
   obtenerMessageIdPorTicket,
   guardarMessageIdParaTicket,
   buscarTicketIdPorMessageId,
+  buscarTicketIdPorConversationId,
   lockMessageId,
   unlockMessageId,
 } = require("../services/email-map");
@@ -134,7 +135,7 @@ async function crearTicketDesdeCorreo(req, res) {
     );
 
     if (ticket?.id) {
-      await guardarMessageIdParaTicket(ticket.id, correo.id);
+      await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
     }
 
     return res.json({
@@ -312,14 +313,25 @@ async function procesarCorreosNoLeidos(req, res) {
 
         console.log(`procesarCorreosNoLeidos: procesando mensaje id=${correo.id} parent=${correo.parentMessageId||''} subject="${(correo.subject||'').slice(0,80)}"`);
         // Si es una respuesta en hilo a un ticket ya mapeado, la procesa el job de replies y no debe crear un ticket nuevo.
+        let ticketRelacionado = null;
         if (correo.parentMessageId) {
-          const ticketRelacionado = await buscarTicketIdPorMessageId(correo.parentMessageId);
-          if (ticketRelacionado) {
-            console.log(
-              `Saltando correo ${correo.id} con parentMessageId=${correo.parentMessageId} porque ya está vinculado al ticket ${ticketRelacionado}`
-            );
-            continue;
+          ticketRelacionado = await buscarTicketIdPorMessageId(correo.parentMessageId);
+        }
+
+        if (!ticketRelacionado && correo.conversationId) {
+          ticketRelacionado = await buscarTicketIdPorConversationId(correo.conversationId);
+        }
+
+        if (ticketRelacionado) {
+          console.log(
+            `Saltando correo ${correo.id} porque pertenece al ticket ya vinculado ${ticketRelacionado} (parentMessageId=${correo.parentMessageId || 'N/A'}, conversationId=${correo.conversationId || 'N/A'})`
+          );
+          try {
+            await marcarCorreoLeido(correo.id);
+          } catch (error) {
+            console.error(`No se pudo marcar como leído el correo ${correo.id}:`, error.response?.data || error.message || error);
           }
+          continue;
         }
 
         // Evitar crear el mismo ticket dos veces si este mensaje ya fue procesado.
@@ -443,7 +455,7 @@ async function procesarCorreosNoLeidos(req, res) {
 
         if (ticket?.id) {
           console.log(`Ticket creado en GLPI: id=${ticket.id} (desde correo ${correo.id})`);
-          await guardarMessageIdParaTicket(ticket.id, correo.id);
+          await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
         } else {
           console.warn(`No se creó ticket desde correo ${correo.id}. respuesta crearTicketGLPI: ${JSON.stringify(ticket)}`);
         }

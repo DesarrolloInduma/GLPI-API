@@ -5,13 +5,35 @@ const crypto = require("crypto");
 const MAP_PATH = path.resolve(__dirname, "../data/ticket-message-map.json");
 const LOCKS_DIR = path.resolve(__dirname, "../data/processing");
 
+function normalizeMap(raw) {
+  if (!raw || typeof raw !== "object") {
+    return { messages: {}, conversations: {} };
+  }
+
+  if (raw.messages && raw.conversations) {
+    return {
+      messages: raw.messages || {},
+      conversations: raw.conversations || {},
+    };
+  }
+
+  const messages = {};
+  const conversations = {};
+  for (const [ticketId, messageId] of Object.entries(raw)) {
+    messages[String(ticketId)] = messageId;
+  }
+
+  return { messages, conversations };
+}
+
 async function leerMapa() {
   try {
     const contenido = await fs.readFile(MAP_PATH, "utf8");
-    return JSON.parse(contenido);
+    const raw = JSON.parse(contenido);
+    return normalizeMap(raw);
   } catch (error) {
     if (error.code === "ENOENT") {
-      return {};
+      return { messages: {}, conversations: {} };
     }
     throw error;
   }
@@ -29,13 +51,20 @@ function obtenerLockPath(messageId) {
 
 async function obtenerMessageIdPorTicket(ticketId) {
   const mapa = await leerMapa();
-  return mapa[String(ticketId)] || null;
+  return mapa.messages[String(ticketId)] || null;
 }
 
 async function buscarTicketIdPorMessageId(messageId) {
+  if (!messageId) return null;
   const mapa = await leerMapa();
-  const entry = Object.entries(mapa).find(([, msgId]) => msgId === messageId);
+  const entry = Object.entries(mapa.messages).find(([, msgId]) => msgId === messageId);
   return entry ? entry[0] : null;
+}
+
+async function buscarTicketIdPorConversationId(conversationId) {
+  if (!conversationId) return null;
+  const mapa = await leerMapa();
+  return mapa.conversations[String(conversationId)] || null;
 }
 
 async function lockMessageId(messageId) {
@@ -57,15 +86,26 @@ async function unlockMessageId(messageId) {
   }
 }
 
-async function guardarMessageIdParaTicket(ticketId, messageId) {
+async function guardarMessageIdParaTicket(ticketId, messageId, conversationId) {
   const mapa = await leerMapa();
-  mapa[String(ticketId)] = messageId;
+  if (!mapa.messages) mapa.messages = {};
+  if (!mapa.conversations) mapa.conversations = {};
+
+  if (messageId) {
+    mapa.messages[String(ticketId)] = messageId;
+  }
+
+  if (conversationId) {
+    mapa.conversations[String(conversationId)] = String(ticketId);
+  }
+
   await guardarMapa(mapa);
 }
 
 module.exports = {
   obtenerMessageIdPorTicket,
   buscarTicketIdPorMessageId,
+  buscarTicketIdPorConversationId,
   guardarMessageIdParaTicket,
   lockMessageId,
   unlockMessageId,

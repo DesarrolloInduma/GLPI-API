@@ -11,7 +11,7 @@ const {
 } = require("../services/glpi");
 
 const {
-  obtenerMessageIdPorTicket,
+  buscarTicketIdPorMessageId,
 } = require("../services/email-map");
 
 const fs = require("fs").promises;
@@ -34,24 +34,6 @@ async function leerRepliesProcessadas() {
 async function guardarRepliesProcessadas(mapa) {
   await fs.mkdir(path.dirname(PROCESSED_REPLIES_PATH), { recursive: true });
   await fs.writeFile(PROCESSED_REPLIES_PATH, JSON.stringify(mapa, null, 2), "utf8");
-}
-
-async function buscarTicketIdPorMessageId(messageId) {
-  try {
-    const mapPath = path.resolve(__dirname, "../data/ticket-message-map.json");
-    const contenido = await fs.readFile(mapPath, "utf8");
-    const mapa = JSON.parse(contenido);
-    
-    // Buscar por messageId exacto
-    for (const [ticketId, msgId] of Object.entries(mapa)) {
-      if (msgId === messageId) {
-        return ticketId;
-      }
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
 }
 
 async function procesarRepliesNuevas() {

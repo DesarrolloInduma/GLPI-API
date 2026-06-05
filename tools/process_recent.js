@@ -59,7 +59,7 @@ const {
         const ticket = await crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, 0);
         console.log('Respuesta crearTicketGLPI:', ticket);
         if (ticket?.id) {
-          await guardarMessageIdParaTicket(ticket.id, correo.id);
+          await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
           console.log('Guardado mapeo ticket', ticket.id, '->', correo.id);
           try { await marcarCorreoLeido(correo.id); } catch(e){/*no critical*/}
         }
