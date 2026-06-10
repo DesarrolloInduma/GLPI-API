@@ -37,6 +37,38 @@ async function guardarRepliesProcessadas(mapa) {
   await fs.writeFile(PROCESSED_REPLIES_PATH, JSON.stringify(mapa, null, 2), "utf8");
 }
 
+function extraerSoloRespuesta(contenido) {
+  if (!contenido || typeof contenido !== "string") {
+    return "Sin contenido";
+  }
+
+  let texto = contenido.trim();
+
+  const separators = [
+    /<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*$/i,
+    /<blockquote[\s\S]*$/i,
+    /<div[^>]*style=["']?border-left:\s*1px solid #ccc["']?[^>]*>[\s\S]*$/i,
+    /(^|\r?\n)--\s*\r?\n[\s\S]*$/m,
+    /(^|\r?\n)On .*wrote:[\s\S]*$/mi,
+    /(^|\r?\n)De:\s.*$/mi,
+    /(^|\r?\n)-----Original Message-----[\s\S]*$/i,
+  ];
+
+  for (const sep of separators) {
+    const match = texto.match(sep);
+    if (match && typeof match.index === "number") {
+      texto = texto.substring(0, match.index).trim();
+      break;
+    }
+  }
+
+  if (!texto) {
+    return "Sin contenido";
+  }
+
+  return texto;
+}
+
 async function procesarRepliesNuevas() {
   try {
     const correos = await obtenerCorreosNoLeidos();
@@ -72,17 +104,11 @@ async function procesarRepliesNuevas() {
 
         // Obtener el contenido completo de la respuesta
         const respuestaCompleta = await obtenerCorreoPorId(correo.id);
-        const contenido = respuestaCompleta.body?.content || respuestaCompleta.bodyPreview || "Sin contenido";
-        
-        const remitente = respuestaCompleta.from?.emailAddress?.name || 
-                         respuestaCompleta.from?.emailAddress?.address || 
-                         "Desconocido";
+        const contenidoOriginal = respuestaCompleta.body?.content || respuestaCompleta.bodyPreview || "Sin contenido";
+        const contenido = extraerSoloRespuesta(contenidoOriginal);
 
-        // Agregar como seguimiento al ticket
-        await agregarRespuestaTicketGLPI(
-          ticketId,
-          `<p><strong>De:</strong> ${remitente}</p><p><strong>Fecha:</strong> ${respuestaCompleta.receivedDateTime}</p><hr>${contenido}`
-        );
+        // Agregar solo la respuesta al ticket
+        await agregarRespuestaTicketGLPI(ticketId, contenido);
 
         // Marcar como leído
         await marcarCorreoLeido(correo.id);
