@@ -12,6 +12,7 @@ const {
 
 const {
   buscarTicketIdPorMessageId,
+  buscarTicketIdPorConversationId,
 } = require("../services/email-map");
 
 const fs = require("fs").promises;
@@ -48,11 +49,21 @@ async function procesarRepliesNuevas() {
         // Si ya fue procesada, saltar
         if (repliesProcessadas[correo.id]) continue;
 
-        // Verificar si es una respuesta (tiene parentMessageId)
-        if (!correo.parentMessageId) continue;
+        // Verificar si es una respuesta (tiene parentMessageId o conversationId)
+        if (!correo.parentMessageId && !correo.conversationId) continue;
 
-        // Buscar el ticket asociado al mensaje padre
-        const ticketId = await buscarTicketIdPorMessageId(correo.parentMessageId);
+        // Buscar el ticket asociado primero por conversationId (más confiable)
+        // y luego por parentMessageId
+        let ticketId = null;
+        
+        if (correo.conversationId) {
+          ticketId = await buscarTicketIdPorConversationId(correo.conversationId);
+        }
+        
+        if (!ticketId && correo.parentMessageId) {
+          ticketId = await buscarTicketIdPorMessageId(correo.parentMessageId);
+        }
+        
         if (!ticketId) continue;
 
         // Validar que el ticket exista
