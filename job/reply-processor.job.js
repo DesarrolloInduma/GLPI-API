@@ -44,25 +44,39 @@ function extraerSoloRespuesta(contenido) {
 
   let texto = contenido.trim();
 
+  // Eliminar encabezados de correo (De:, Enviado:, Para:, Cc:, Asunto:, etc.)
+  texto = texto.replace(/^[\s\S]*?(<p>)?(Buenas tardes|Buenos días|Hola|Estimado|De:|Enviado:|Para:|Cc:|Asunto:)/i, (match) => {
+    const inicio = match.search(/(Buenas tardes|Buenos días|Hola|Estimado)/i);
+    return inicio !== -1 ? match.substring(inicio) : match;
+  });
+
+  // Limpiar tags HTML de encabezados que no sean párrafos normales
+  texto = texto.replace(/<div[^>]*style=["']?[^"']*border[^"']*["']?[^>]*>[\s\S]*?<\/div>/gi, "");
+  texto = texto.replace(/<table[^>]*>[\s\S]*?<\/table>/gi, "");
+
+  // Eliminar bloques citados (div con clases típicas de gmail, outlook, etc.)
+  texto = texto.replace(/<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*?<\/div>/gi, "");
+  texto = texto.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "");
+
+  // Eliminar separadores comunes de citación
   const separators = [
-    /<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*$/i,
-    /<blockquote[\s\S]*$/i,
-    /<div[^>]*style=["']?border-left:\s*1px solid #ccc["']?[^>]*>[\s\S]*$/i,
-    /(^|\r?\n)--\s*\r?\n[\s\S]*$/m,
-    /(^|\r?\n)On .*wrote:[\s\S]*$/mi,
-    /(^|\r?\n)De:\s.*$/mi,
-    /(^|\r?\n)-----Original Message-----[\s\S]*$/i,
+    /(\r?\n)?--+\s*(Mensaje|Message|En|On|De|From)[\s\S]*$/mi,
+    /(\r?\n)?-----\s*(Original|Forwarded|Mensaje|Message)[\s\S]*$/mi,
+    /(\r?\n)?De:\s+[^<]*<[^>]+>[\s\S]*$/i,
   ];
 
   for (const sep of separators) {
     const match = texto.match(sep);
-    if (match && typeof match.index === "number") {
-      texto = texto.substring(0, match.index).trim();
-      break;
+    if (match) {
+      texto = texto.substring(0, match.index || 0).trim();
     }
   }
 
-  if (!texto) {
+  // Limpiar espacios múltiples
+  texto = texto.replace(/(\r?\n){3,}/g, "\n\n");
+  texto = texto.trim();
+
+  if (!texto || texto.length < 3) {
     return "Sin contenido";
   }
 
