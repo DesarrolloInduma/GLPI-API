@@ -247,14 +247,18 @@ async function agregarRespuestaTicketGLPI(ticketId, contenido) {
         items_id: ticketId,
         content: contenido,
         is_private: 0,
+
+        // 🔥 SOLUCIÓN AL BUCLE
+        _disablenotif: true
       },
     },
-    { headers: headersGLPI(sessionToken) }
+    {
+      headers: headersGLPI(sessionToken),
+    }
   );
 
   return response.data;
 }
-
 async function obtenerSeguimientosRecientesGLPI(limit = 50) {
   const sessionToken = await iniciarSesionGLPI();
   const rangeEnd = Math.max(Number(limit) || 50, 1) - 1;
