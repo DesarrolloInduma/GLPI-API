@@ -15,6 +15,10 @@ const {
   buscarTicketIdPorConversationId,
 } = require("../services/email-map");
 
+const {
+  marcarSeguimientosEnviados,
+} = require("../services/followup-state");
+
 const fs = require("fs").promises;
 const path = require("path");
 
@@ -37,50 +41,93 @@ async function guardarRepliesProcessadas(mapa) {
   await fs.writeFile(PROCESSED_REPLIES_PATH, JSON.stringify(mapa, null, 2), "utf8");
 }
 
+function stripHtml(text) {
+  if (!text || typeof text !== "string") return "";
+  let result = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<!--([\s\S]*?)-->/g, "")
+    .replace(/<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<div[^>]*class=["']?yahoo_quoted["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
+    .replace(/<div[^>]*style=["']?border-left:\s*1px solid #ccc["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<table[^>]*>[\s\S]*?<\/table>/gi, "")
+    .replace(/<(br|div|p|li|tr|header|footer|section|article)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'");
+  return result;
+}
+
 function extraerSoloRespuesta(contenido) {
-  if (!contenido || typeof contenido !== "string") {
+  if (!contenido) {
     return "Sin contenido";
   }
 
-  let texto = contenido.trim();
+  let texto = stripHtml(contenido);
+  texto = texto.replace(/\u00A0/g, " ").replace(/\t/g, " ");
+  texto = texto.replace(/ +/g, " ");
+  texto = texto.replace(/\n{3,}/g, "\n\n");
+  texto = texto.trim();
 
-  // Eliminar encabezados de correo (De:, Enviado:, Para:, Cc:, Asunto:, etc.)
-  texto = texto.replace(/^[\s\S]*?(<p>)?(Buenas tardes|Buenos días|Hola|Estimado|De:|Enviado:|Para:|Cc:|Asunto:)/i, (match) => {
-    const inicio = match.search(/(Buenas tardes|Buenos días|Hola|Estimado)/i);
-    return inicio !== -1 ? match.substring(inicio) : match;
-  });
-
-  // Limpiar tags HTML de encabezados que no sean párrafos normales
-  texto = texto.replace(/<div[^>]*style=["']?[^"']*border[^"']*["']?[^>]*>[\s\S]*?<\/div>/gi, "");
-  texto = texto.replace(/<table[^>]*>[\s\S]*?<\/table>/gi, "");
-
-  // Eliminar bloques citados (div con clases típicas de gmail, outlook, etc.)
-  texto = texto.replace(/<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*?<\/div>/gi, "");
-  texto = texto.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "");
-
-  // Eliminar separadores comunes de citación
-  const separators = [
-    /(\r?\n)?--+\s*(Mensaje|Message|En|On|De|From)[\s\S]*$/mi,
-    /(\r?\n)?-----\s*(Original|Forwarded|Mensaje|Message)[\s\S]*$/mi,
-    /(\r?\n)?De:\s+[^<]*<[^>]+>[\s\S]*$/i,
+  const lineSeparators = [
+    /^-+\s*$/,
+    /^_{2,}.*$/,
+    /^On .*wrote:$/i,
+    /^On .*escribi[oó]:$/i,
+    /^From:.*$/i,
+    /^Sent:.*$/i,
+    /^To:.*$/i,
+    /^Cc:.*$/i,
+    /^Subject:.*$/i,
+    /^De:.*$/i,
+    /^Enviado:.*$/i,
+    /^Para:.*$/i,
+    /^Asunto:.*$/i,
+    /^-----Original Message-----$/i,
+    /^-----Mensaje Original-----$/i,
+    /^Mensaje original.*$/i,
+    /^Asunto del ticket:.*$/i,
+    /^Por favor confirme si la solución proporcionada.*$/i,
+    /^Se agregó una respuesta a tu caso.*$/i,
+    /^This message was sent.*$/i,
+    /^>.*$/,
+    /^\|.*$/
   ];
 
-  for (const sep of separators) {
-    const match = texto.match(sep);
-    if (match) {
-      texto = texto.substring(0, match.index || 0).trim();
+  const lines = texto.split(/\n/);
+  let cutIndex = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    for (const sep of lineSeparators) {
+      if (sep.test(line)) {
+        cutIndex = i;
+        break;
+      }
+    }
+
+    if (cutIndex !== lines.length) {
+      break;
     }
   }
 
-  // Limpiar espacios múltiples
-  texto = texto.replace(/(\r?\n){3,}/g, "\n\n");
-  texto = texto.trim();
+  let resultado = lines.slice(0, cutIndex).join("\n").trim();
+  resultado = resultado.replace(/\n{3,}/g, "\n\n");
+  resultado = resultado.replace(/^\s+|\s+$/g, "");
 
-  if (!texto || texto.length < 3) {
+  if (!resultado) {
     return "Sin contenido";
   }
 
-  return texto;
+  return resultado;
 }
 
 async function procesarRepliesNuevas() {
@@ -122,7 +169,12 @@ async function procesarRepliesNuevas() {
         const contenido = extraerSoloRespuesta(contenidoOriginal);
 
         // Agregar solo la respuesta al ticket
-        await agregarRespuestaTicketGLPI(ticketId, contenido);
+        const seguimiento = await agregarRespuestaTicketGLPI(ticketId, contenido);
+
+        // Marcar el seguimiento entrante como ya enviado a correo
+        if (seguimiento?.id) {
+          marcarSeguimientosEnviados([`followup:${seguimiento.id}`]);
+        }
 
         // Marcar como leído
         await marcarCorreoLeido(correo.id);
