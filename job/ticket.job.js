@@ -9,7 +9,7 @@ const {
 function iniciarJobTickets() {
 
   cron.schedule(
-    "*/5 * * * *",
+    "* * * * *",
     async () => {
 
       console.log(

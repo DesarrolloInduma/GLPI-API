@@ -84,7 +84,7 @@ iniciarJobTickets();
 console.log("Activando monitor de respuestas GLPI...");
 iniciarJobSeguimientos();
 console.log("Activando procesador de respuestas de usuario...");
-iniciarJobReplies();
+// iniciarJobReplies();
 
 app.get("/", (req, res) => {
   res.send("GLPI Job Running");
