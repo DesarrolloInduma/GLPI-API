@@ -28,6 +28,7 @@ const {
   guardarMessageIdParaTicket,
   buscarTicketIdPorMessageId,
   buscarTicketIdPorConversationId,
+  registrarMensajeProcesado,
   lockMessageId,
   unlockMessageId,
 } = require("../services/email-map");
@@ -503,7 +504,7 @@ async function procesarCorreosNoLeidos(req, res) {
           }
 
           // Guardar mapeo de messageId para que `buscarTicketIdPorMessageId` lo encuentre y no se procese doble
-          await guardarMessageIdParaTicket(ticketRelacionado, correo.id, correo.conversationId);
+          await registrarMensajeProcesado(correo.id, ticketRelacionado);
 
           try {
             await marcarCorreoLeido(correo.id);

@@ -7,13 +7,14 @@ const LOCKS_DIR = path.resolve(__dirname, "../data/processing");
 
 function normalizeMap(raw) {
   if (!raw || typeof raw !== "object") {
-    return { messages: {}, conversations: {} };
+    return { messages: {}, conversations: {}, processed: {} };
   }
 
   if (raw.messages && raw.conversations) {
     return {
       messages: raw.messages || {},
       conversations: raw.conversations || {},
+      processed: raw.processed || {},
     };
   }
 
@@ -23,7 +24,7 @@ function normalizeMap(raw) {
     messages[String(ticketId)] = messageId;
   }
 
-  return { messages, conversations };
+  return { messages, conversations, processed: {} };
 }
 
 async function leerMapa() {
@@ -33,7 +34,7 @@ async function leerMapa() {
     return normalizeMap(raw);
   } catch (error) {
     if (error.code === "ENOENT") {
-      return { messages: {}, conversations: {} };
+      return { messages: {}, conversations: {}, processed: {} };
     }
     throw error;
   }
@@ -57,6 +58,12 @@ async function obtenerMessageIdPorTicket(ticketId) {
 async function buscarTicketIdPorMessageId(messageId) {
   if (!messageId) return null;
   const mapa = await leerMapa();
+  
+  // Buscar primero en mapa.processed (para mensajes de respuesta)
+  if (mapa.processed && mapa.processed[String(messageId)]) {
+    return mapa.processed[String(messageId)];
+  }
+
   const entry = Object.entries(mapa.messages).find(([, msgId]) => msgId === messageId);
   return entry ? entry[0] : null;
 }
@@ -108,11 +115,20 @@ async function guardarMessageIdParaTicket(ticketId, messageId, conversationId) {
   await guardarMapa(mapa);
 }
 
+async function registrarMensajeProcesado(messageId, ticketId) {
+  const mapa = await leerMapa();
+  if (!mapa.processed) mapa.processed = {};
+  mapa.processed[String(messageId)] = String(ticketId);
+  await guardarMapa(mapa);
+}
+
 module.exports = {
   obtenerMessageIdPorTicket,
   buscarTicketIdPorMessageId,
   buscarTicketIdPorConversationId,
   guardarMessageIdParaTicket,
+  registrarMensajeProcesado,
   lockMessageId,
   unlockMessageId,
 };
+
