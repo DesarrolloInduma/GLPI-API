@@ -28,6 +28,32 @@ const {
 } = require("../services/email-map");
 
 // =============================
+// 🧹 LIMPIAR RESPUESTA DE CORREO
+// =============================
+function limpiarRespuestaCorreo(html) {
+  if (!html) return "";
+
+  const separadores = [
+    "De:",
+    "From:",
+    "-----Original Message-----",
+    "Tu mensaje original:",
+    "Asunto del ticket:",
+  ];
+
+  let limpio = html;
+
+  for (const sep of separadores) {
+    const index = limpio.indexOf(sep);
+    if (index !== -1) {
+      limpio = limpio.substring(0, index);
+    }
+  }
+
+  return limpio.trim();
+}
+
+// =============================
 // PROCESAR CORREOS
 // =============================
 async function procesarCorreosNoLeidos(req = null, res = null) {
@@ -81,14 +107,15 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         // 🔥 SI ES RESPUESTA → AGREGAR A GLPI
         // =============================
         if (ticketRelacionado) {
-          console.log(
-            `📩 Respuesta detectada → ticket ${ticketRelacionado}`
-          );
+          console.log(`📩 Respuesta detectada → ticket ${ticketRelacionado}`);
 
-          const contenido =
+          let contenido =
             correo.body?.content ||
             correo.bodyPreview ||
             "Sin contenido";
+
+          // 🧹 LIMPIEZA AQUÍ
+          contenido = limpiarRespuestaCorreo(contenido);
 
           await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
 
@@ -123,10 +150,14 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         // CREAR TICKET
         // =============================
         const asunto = correo.subject || "Sin asunto";
+
         let descripcion =
           correo.body?.content ||
           correo.bodyPreview ||
           "Sin contenido";
+
+        // 🧹 TAMBIÉN LIMPIAMOS AQUÍ (opcional pero recomendado)
+        descripcion = limpiarRespuestaCorreo(descripcion);
 
         const email =
           correo.from?.emailAddress?.address || "sin-correo";
@@ -241,7 +272,7 @@ async function crearTicketDesdeCorreo(req, res) {
 
   const ticket = await crearTicketGLPI(
     correo.subject,
-    correo.body?.content,
+    limpiarRespuestaCorreo(correo.body?.content),
     correo.from?.emailAddress?.address,
     correo.from?.emailAddress?.name,
     0
