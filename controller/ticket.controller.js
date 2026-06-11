@@ -1,4 +1,35 @@
-try {
+const {
+  obtenerCorreos,
+  obtenerCorreosNoLeidos,
+  marcarCorreoLeido,
+  obtenerCorreoPorId,
+  obtenerAdjuntosDeCorreo,
+  obtenerDetalleAdjunto,
+} = require("../services/outlook.service");
+
+const {
+  obtenerTicketsGLPI,
+  crearTicketGLPI,
+  agregarRespuestaTicketGLPI,
+  obtenerUsersGLPI,
+  buscarUsuarioGLPIPorEmail,
+  buscarUsuarioGLPIPorLogin,
+  agregarUsuarioATicket,
+  subirDocumentoGLPI,
+  vincularDocumentoATicket,
+} = require("../services/glpi");
+
+const {
+  obtenerMessageIdPorTicket,
+  buscarTicketIdPorMessageId,
+  buscarTicketIdPorConversationId,
+  guardarMessageIdParaTicket,
+  lockMessageId,
+  unlockMessageId,
+} = require("../services/email-map");
+
+async function procesarCorreosNoLeidos(req = null, res = null) {
+  try {
     const correosNoLeidos = await obtenerCorreosNoLeidos();
     console.log(`procesarCorreosNoLeidos: encontrados ${Array.isArray(correosNoLeidos)?correosNoLeidos.length:0} correos no leídos`);
     console.log(
@@ -326,6 +357,108 @@ try {
     }
     
     throw error;
+  }
+}
+
+async function obtenerTickets(req, res) {
+  try {
+    const tickets = await obtenerTicketsGLPI();
+    return res.json({ ok: true, tickets });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+}
+
+async function crearTicket(req, res) {
+  try {
+    const {
+      asunto,
+      descripcion,
+      email,
+      nombreSolicitante,
+      tecnicoId = 0,
+    } = req.body || {};
+
+    if (!email || !asunto) {
+      return res.status(400).json({
+        ok: false,
+        error: "Faltan campos requeridos: email y asunto",
+      });
+    }
+
+    const ticket = await crearTicketGLPI(
+      asunto,
+      descripcion || "Sin contenido",
+      email,
+      nombreSolicitante || "",
+      Number(tecnicoId) || 0
+    );
+
+    if (!ticket?.id) {
+      return res.status(500).json({
+        ok: false,
+        error: "No se logró crear el ticket en GLPI",
+      });
+    }
+
+    return res.json({ ok: true, ticket });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+}
+
+async function crearTicketDesdeCorreo(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ ok: false, error: "Falta id del correo" });
+    }
+
+    const correo = await obtenerCorreoPorId(id);
+    if (!correo?.id) {
+      return res.status(404).json({ ok: false, error: "Correo no encontrado" });
+    }
+
+    const asunto = correo.subject || "Sin asunto";
+    const descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
+    const email =
+      correo.from?.emailAddress?.address ||
+      correo.sender?.emailAddress?.address ||
+      "sin-correo";
+    const nombreSolicitante = correo.from?.emailAddress?.name || correo.sender?.emailAddress?.name || "";
+
+    const ticket = await crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, 0);
+
+    if (!ticket?.id) {
+      return res.status(500).json({ ok: false, error: "No se logró crear el ticket desde el correo" });
+    }
+
+    await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
+
+    return res.json({ ok: true, ticket });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+}
+
+async function responderTicket(req, res) {
+  try {
+    const { id } = req.params;
+    const contenido = String(req.body?.contenido || req.body?.content || "").trim();
+
+    if (!id || !contenido) {
+      return res.status(400).json({ ok: false, error: "Falta id del ticket o contenido" });
+    }
+
+    const seguimiento = await agregarRespuestaTicketGLPI(id, contenido);
+
+    if (!seguimiento?.id) {
+      return res.status(500).json({ ok: false, error: "No se pudo agregar la respuesta al ticket" });
+    }
+
+    return res.json({ ok: true, seguimiento });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
 }
 

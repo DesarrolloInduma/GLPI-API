@@ -7,8 +7,15 @@ const {
   obtenerSolicitanteTicketGLPI,
 } = require("../services/glpi");
 
-const { enviarCorreo, responderCorreoEnHilo } = require("../services/outlook.service");
-const { obtenerMessageIdPorTicket } = require("../services/email-map");
+const {
+  enviarCorreo,
+  enviarCorreoConDraft,
+  responderCorreoEnHilo,
+} = require("../services/outlook.service");
+const {
+  obtenerMessageIdPorTicket,
+  guardarMessageIdParaTicket,
+} = require("../services/email-map");
 
 const {
   seguimientoYaEnviado,
@@ -245,7 +252,19 @@ async function enviarSeguimientosNuevos() {
       if (originalMessageId) {
         await responderCorreoEnHilo(originalMessageId, contenidoCorreo);
       } else {
-        await enviarCorreo(solicitante.email, asunto, contenidoCorreo);
+        const sendResult = await enviarCorreoConDraft(
+          solicitante.email,
+          asunto,
+          contenidoCorreo
+        );
+
+        if (sendResult?.messageId || sendResult?.conversationId) {
+          await guardarMessageIdParaTicket(
+            ticketId,
+            sendResult.messageId,
+            sendResult.conversationId
+          );
+        }
       }
       marcarSeguimientosEnviados([evento.id], true);
 

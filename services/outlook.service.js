@@ -169,6 +169,76 @@ async function enviarCorreo(destinatario, asunto, contenidoHtml) {
   }
 }
 
+async function crearBorradorCorreo(destinatario, asunto, contenidoHtml) {
+  try {
+    const token = await getAccessToken();
+
+    const response = await axios.post(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages`,
+      {
+        subject: asunto,
+        body: {
+          contentType: "HTML",
+          content: contenidoHtml,
+        },
+        toRecipients: [
+          {
+            emailAddress: {
+              address: destinatario,
+            },
+          },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function enviarBorradorCorreo(messageId) {
+  try {
+    const token = await getAccessToken();
+
+    await axios.post(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/messages/${messageId}/send`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function enviarCorreoConDraft(destinatario, asunto, contenidoHtml) {
+  const borrador = await crearBorradorCorreo(destinatario, asunto, contenidoHtml);
+
+  if (!borrador?.id) {
+    throw new Error("No se pudo crear borrador de correo para envío");
+  }
+
+  await enviarBorradorCorreo(borrador.id);
+
+  return {
+    messageId: borrador.id,
+    conversationId: borrador.conversationId || null,
+  };
+}
+
 async function responderCorreoEnHilo(messageId, contenidoHtml) {
   try {
     const token = await getAccessToken();
@@ -205,5 +275,6 @@ module.exports = {
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
   enviarCorreo,
+  enviarCorreoConDraft,
   responderCorreoEnHilo,
 };
