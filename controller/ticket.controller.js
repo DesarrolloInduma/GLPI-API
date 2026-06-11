@@ -76,6 +76,96 @@ function extraerContenidoHtml(html) {
   return html;
 }
 
+function stripHtml(text) {
+  if (!text || typeof text !== "string") return "";
+  let result = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<!--([\s\S]*?)-->/g, "")
+    .replace(/<div[^>]*class=["']?gmail_quote["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<div[^>]*class=["']?yahoo_quoted["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
+    .replace(/<div[^>]*style=["']?border-left:\s*1px solid #ccc["']?[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<table[^>]*>[\s\S]*?<\/table>/gi, "")
+    .replace(/<(br|div|p|li|tr|header|footer|section|article)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'");
+  return result;
+}
+
+function extraerSoloRespuesta(contenido) {
+  if (!contenido) {
+    return "Sin contenido";
+  }
+
+  let texto = stripHtml(contenido);
+  texto = texto.replace(/\u00A0/g, " ").replace(/\t/g, " ");
+  texto = texto.replace(/ +/g, " ");
+  texto = texto.replace(/\n{3,}/g, "\n\n");
+  texto = texto.trim();
+
+  const lineSeparators = [
+    /^-+\s*$/,
+    /^_{2,}.*$/,
+    /^On .*wrote:$/i,
+    /^On .*escribi[oó]:$/i,
+    /^From:.*$/i,
+    /^Sent:.*$/i,
+    /^To:.*$/i,
+    /^Cc:.*$/i,
+    /^Subject:.*$/i,
+    /^De:.*$/i,
+    /^Enviado:.*$/i,
+    /^Para:.*$/i,
+    /^Asunto:.*$/i,
+    /^-----Original Message-----$/i,
+    /^-----Mensaje Original-----$/i,
+    /^Mensaje original.*$/i,
+    /^Asunto del ticket:.*$/i,
+    /^Por favor confirme si la solución proporcionada.*$/i,
+    /^Se agregó una respuesta a tu caso.*$/i,
+    /^This message was sent.*$/i,
+    /^>.*$/,
+    /^\|.*$/
+  ];
+
+  const lines = texto.split(/\n/);
+  let cutIndex = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    for (const sep of lineSeparators) {
+      if (sep.test(line)) {
+        cutIndex = i;
+        break;
+      }
+    }
+
+    if (cutIndex !== lines.length) {
+      break;
+    }
+  }
+
+  let resultado = lines.slice(0, cutIndex).join("\n").trim();
+  resultado = resultado.replace(/\n{3,}/g, "\n\n");
+  resultado = resultado.replace(/^\s+|\s+$/g, "");
+
+  if (!resultado) {
+    return "Sin contenido";
+  }
+
+  return resultado;
+}
+
+
 async function obtenerTickets(req, res) {
   try {
     const tickets = await obtenerTicketsGLPI();
@@ -337,15 +427,100 @@ async function procesarCorreosNoLeidos(req, res) {
 
         if (ticketRelacionado) {
           console.log(
-            `Saltando correo ${correo.id} porque pertenece al ticket ya vinculado ${ticketRelacionado} (parentMessageId=${correo.parentMessageId || 'N/A'}, conversationId=${correo.conversationId || 'N/A'})`
+            `Procesando respuesta/seguimiento para el ticket ${ticketRelacionado} desde el correo ${correo.id}`
           );
+
+          // Obtener el contenido del correo completo por ID (para asegurar cuerpo HTML completo)
+          let contenidoOriginal = "";
+          try {
+            const correoCompleto = await obtenerCorreoPorId(correo.id);
+            contenidoOriginal = correoCompleto.body?.content || correoCompleto.bodyPreview || "Sin contenido";
+          } catch (e) {
+            console.error(`Error obteniendo cuerpo completo del correo ${correo.id}:`, e.message);
+            contenidoOriginal = correo.body?.content || correo.bodyPreview || "Sin contenido";
+          }
+
+          // Procesar adjuntos e imágenes en línea para el seguimiento
+          let adjuntosSubidos = 0;
+          const docIdsParaVincular = [];
+          try {
+            const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
+            for (const adj of adjuntos) {
+              try {
+                if (adj["@odata.type"] !== "#microsoft.graph.fileAttachment" && !adj.contentBytes) {
+                  continue;
+                }
+                const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
+                if (!detalle.contentBytes) continue;
+                
+                const nombre = detalle.name || adj.name || "adjunto";
+                const mime = detalle.contentType || adj.contentType || "application/octet-stream";
+                
+                const docId = await subirDocumentoGLPI(nombre, detalle.contentBytes, mime);
+                docIdsParaVincular.push(docId);
+                adjuntosSubidos++;
+
+                // Si es una imagen inline, reemplazar el 'cid:' en el HTML
+                if (adj.isInline && adj.contentId && (correo.body?.contentType === 'html' || contenidoOriginal.includes(`cid:${adj.contentId}`))) {
+                  const baseUrl = String(process.env.GLPI_URL).replace('/apirest.php', '');
+                  const docUrl = `${baseUrl}/front/document.send.php?docid=${docId}`;
+                  const cidRegex = new RegExp(`cid:${adj.contentId}`, 'gi');
+                  contenidoOriginal = contenidoOriginal.replace(cidRegex, docUrl);
+                }
+              } catch (adjError) {
+                console.error(`Error subiendo adjunto ${adj.name} para seguimiento:`, adjError.response?.data || adjError.message);
+              }
+            }
+          } catch (attachError) {
+            console.error("Error obteniendo adjuntos del correo de seguimiento:", attachError.response?.data || attachError.message);
+          }
+
+          // Extraer la respuesta limpia
+          const contenidoRespuesta = extraerSoloRespuesta(contenidoOriginal);
+          const contenidoFiltrado = contenidoRespuesta.trim();
+          const saludoSolo = /^\s*(hola|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|gracias|ok|entendido|saludos|cordialmente)[\s\.,!¡¿?]*$/i;
+
+          if (contenidoFiltrado === "Sin contenido" || saludoSolo.test(contenidoFiltrado)) {
+            console.log(`Correo ${correo.id} ignorado como respuesta trivial para el ticket ${ticketRelacionado}: ${JSON.stringify(contenidoFiltrado)}`);
+          } else {
+            // Agregar la respuesta en GLPI como ITILFollowup
+            const seguimiento = await agregarRespuestaTicketGLPI(ticketRelacionado, contenidoRespuesta);
+            console.log(`Seguimiento agregado al ticket #${ticketRelacionado} en GLPI desde correo ${correo.id}`);
+
+            // Vincular documentos subidos al ticket
+            for (const docId of docIdsParaVincular) {
+              try {
+                await vincularDocumentoATicket(ticketRelacionado, docId);
+              } catch (e) {
+                console.error(`Error vinculando doc ${docId} al ticket ${ticketRelacionado}:`, e.message);
+              }
+            }
+
+            // Marcar el seguimiento entrante como ya enviado para no duplicar hacia afuera
+            if (seguimiento?.id) {
+              marcarSeguimientosEnviados([`followup:${seguimiento.id}`], true);
+            }
+          }
+
+          // Guardar mapeo de messageId para que `buscarTicketIdPorMessageId` lo encuentre y no se procese doble
+          await guardarMessageIdParaTicket(ticketRelacionado, correo.id, correo.conversationId);
+
           try {
             await marcarCorreoLeido(correo.id);
           } catch (error) {
             console.error(`No se pudo marcar como leído el correo ${correo.id}:`, error.response?.data || error.message || error);
           }
+
+          resultados.push({
+            correoId: correo.id,
+            asunto: correo.subject || "Sin asunto",
+            ticketId: ticketRelacionado,
+            estado: "SEGUIMIENTO_PROCESADO",
+          });
+
           continue;
         }
+
 
         // Evitar crear el mismo ticket dos veces si este mensaje ya fue procesado.
         const ticketExistente = await buscarTicketIdPorMessageId(correo.id);
