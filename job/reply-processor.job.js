@@ -19,6 +19,7 @@ const {
 const {
   marcarSeguimientosEnviados,
 } = require("../services/followup-state");
+const { registrarMensajeProcesado } = require("../services/email-map");
 
 const fs = require("fs").promises;
 const path = require("path");
@@ -198,6 +199,11 @@ async function procesarRepliesNuevas() {
         // Marcar el seguimiento entrante como ya enviado a correo
         if (seguimiento?.id) {
           marcarSeguimientosEnviados([`followup:${seguimiento.id}`]);
+          try {
+            await registrarMensajeProcesado(correo.id, ticketId);
+          } catch (err) {
+            console.warn(`No se pudo registrar mensaje procesado ${correo.id}:`, err.message || err);
+          }
         }
 
         // Marcar como leído
