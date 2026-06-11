@@ -1,5 +1,6 @@
 const cron = require("node-cron");
 const {
+  obtenerCorreos,
   obtenerCorreosNoLeidos,
   marcarCorreoLeido,
   obtenerCorreoPorId,
@@ -132,8 +133,31 @@ function extraerSoloRespuesta(contenido) {
 
 async function procesarRepliesNuevas() {
   try {
-    const correos = await obtenerCorreosNoLeidos();
+    const correosNoLeidos = await obtenerCorreosNoLeidos();
+    const correosRecientes = await obtenerCorreos();
     const repliesProcessadas = await leerRepliesProcessadas();
+
+    const recientes = Array.isArray(correosRecientes.value)
+      ? correosRecientes.value
+      : Array.isArray(correosRecientes)
+      ? correosRecientes
+      : [];
+
+    const correosMap = new Map();
+
+    for (const correo of correosRecientes?.value || []) {
+      if (correo?.id) {
+        correosMap.set(correo.id, correo);
+      }
+    }
+
+    for (const correo of correosNoLeidos) {
+      if (correo?.id) {
+        correosMap.set(correo.id, correo);
+      }
+    }
+
+    const correos = Array.from(correosMap.values());
 
     for (const correo of correos) {
       try {
