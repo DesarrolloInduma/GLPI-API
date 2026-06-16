@@ -1,5 +1,4 @@
 const {
-  obtenerCorreos,
   obtenerCorreosNoLeidos,
   marcarCorreoLeido,
   obtenerCorreoPorId,
@@ -27,7 +26,10 @@ const {
   unlockMessageId,
 } = require("../services/email-map");
 
-// Cuando se asigna el técnico principal, también se agrega este segundo técnico
+// ✅ SOLO ESTOS TÉCNICOS PUEDEN SER ASIGNADOS
+const TECNICOS_PERMITIDOS = [7, 37, 55];
+
+// ✅ REGLAS DE ASIGNACIÓN DOBLE
 const ASIGNACIONES_DOBLES = {
   7: 52,
   37: 53,
@@ -59,9 +61,7 @@ function limpiarRespuestaCorreo(html) {
 
 async function procesarCorreosNoLeidos(req = null, res = null) {
   try {
-    const correosNoLeidos = await obtenerCorreosNoLeidos();
-    let correos = Array.isArray(correosNoLeidos) ? [...correosNoLeidos] : [];
-
+    const correos = await obtenerCorreosNoLeidos();
     const resultados = [];
     const procesadosIds = new Set();
 
@@ -87,7 +87,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           continue;
         }
 
-        // DETECTAR SI ES RESPUESTA
+        // 🔁 DETECTAR RESPUESTA
         let ticketRelacionado = null;
 
         if (correo.parentMessageId) {
@@ -102,14 +102,9 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           );
         }
 
-        // SI ES RESPUESTA → AGREGAR FOLLOWUP A GLPI
         if (ticketRelacionado) {
-          console.log(`📩 Respuesta detectada → ticket ${ticketRelacionado}`);
-
           let contenido =
-            correo.body?.content ||
-            correo.bodyPreview ||
-            "Sin contenido";
+            correo.body?.content || correo.bodyPreview || "Sin contenido";
 
           contenido = limpiarRespuestaCorreo(contenido);
 
@@ -127,70 +122,58 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             correoId: correo.id,
             ticketId: ticketRelacionado,
             tipo: "RESPUESTA",
-            estado: "OK",
           });
 
           continue;
         }
 
-        // EVITAR DUPLICADOS
+        // 🚫 EVITAR DUPLICADOS
         const existe = await buscarTicketIdPorMessageId(correo.id);
         if (existe) {
           await marcarCorreoLeido(correo.id);
           continue;
         }
 
-        // CREAR TICKET NUEVO
+        // 🆕 CREAR TICKET
         const asunto = correo.subject || "Sin asunto";
 
         let descripcion =
-          correo.body?.content ||
-          correo.bodyPreview ||
-          "Sin contenido";
+          correo.body?.content || correo.bodyPreview || "Sin contenido";
 
         descripcion = limpiarRespuestaCorreo(descripcion);
 
         const email = correo.from?.emailAddress?.address || "sin-correo";
         const nombre = correo.from?.emailAddress?.name || "";
 
-        // BUSCAR TÉCNICO EN DESTINATARIOS
-        const toRecipients = Array.isArray(correo.toRecipients) ? correo.toRecipients : [];
-        const ccRecipients = Array.isArray(correo.ccRecipients) ? correo.ccRecipients : [];
-        const recipients = [...toRecipients, ...ccRecipients];
-
-        const outlookUserLower = String(process.env.OUTLOOK_USER || "").trim().toLowerCase();
+        // 👤 BUSCAR TÉCNICO SOLO PERMITIDO
+        const recipients = [
+          ...(correo.toRecipients || []),
+          ...(correo.ccRecipients || []),
+        ];
 
         let tecnicoId = 0;
-        let correoTecnico = null;
-        let metodoAsignacion = "none";
 
         for (const d of recipients) {
           const addr = d?.emailAddress?.address;
           if (!addr) continue;
-          if (outlookUserLower && addr.trim().toLowerCase() === outlookUserLower) continue;
 
-          const usuarioGLPI = await buscarUsuarioGLPIPorEmail(addr);
-          let id = usuarioGLPI?.id || 0;
-          let metodo = "email";
+          let usuario = await buscarUsuarioGLPIPorEmail(addr);
+          let id = usuario?.id || 0;
 
           if (!id) {
-            const login = String(addr).split("@")[0]?.trim();
-            if (login) {
-              const userByLogin = await buscarUsuarioGLPIPorLogin(login);
-              id = userByLogin?.id || 0;
-              metodo = "login";
-            }
+            const login = addr.split("@")[0];
+            const userByLogin = await buscarUsuarioGLPIPorLogin(login);
+            id = userByLogin?.id || 0;
           }
 
-          if (id) {
+          // ✅ SOLO SI ESTÁ EN LISTA PERMITIDA
+          if (id && TECNICOS_PERMITIDOS.includes(id)) {
             tecnicoId = id;
-            correoTecnico = addr;
-            metodoAsignacion = metodo;
             break;
           }
         }
 
-        // ADJUNTOS
+        // 📎 ADJUNTOS
         const docIds = [];
         try {
           const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
@@ -211,13 +194,12 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           console.error("Error adjuntos:", e.message);
         }
 
-        // CREAR TICKET EN GLPI
         const ticket = await crearTicketGLPI(
           asunto,
           descripcion,
           email,
           nombre,
-          tecnicoId,
+          tecnicoId
         );
 
         if (ticket?.id) {
@@ -231,15 +213,10 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             await vincularDocumentoATicket(ticket.id, docId);
           }
 
-          // ASIGNACIÓN DOBLE
-          const tecnicoAdicionalId = ASIGNACIONES_DOBLES[tecnicoId] || 0;
-          if (tecnicoAdicionalId) {
-            try {
-              await agregarUsuarioATicket(ticket.id, tecnicoAdicionalId, 2);
-              console.log(`👥 Asignación doble: técnico ${tecnicoId} → también asignado ${tecnicoAdicionalId} al ticket ${ticket.id}`);
-            } catch (e) {
-              console.error(`Error en asignación doble (técnico ${tecnicoAdicionalId}):`, e.message);
-            }
+          // 👥 ASIGNACIÓN DOBLE
+          const adicional = ASIGNACIONES_DOBLES[tecnicoId];
+          if (adicional) {
+            await agregarUsuarioATicket(ticket.id, adicional, 2);
           }
         }
 
@@ -248,17 +225,13 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         resultados.push({
           correoId: correo.id,
           ticketId: ticket?.id,
-          tipo: "NUEVO",
-          estado: "OK",
           tecnicoId,
-          correoTecnico,
-          metodoAsignacion,
+          tipo: "NUEVO",
         });
 
       } catch (error) {
         resultados.push({
           correoId: correo.id,
-          estado: "ERROR",
           error: error.message,
         });
       } finally {
@@ -267,15 +240,11 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
       }
     }
 
-    if (res) {
-      return res.json({ ok: true, resultados });
-    }
-
+    if (res) return res.json({ ok: true, resultados });
     return resultados;
+
   } catch (error) {
-    if (res) {
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (res) return res.status(500).json({ ok: false, error: error.message });
     throw error;
   }
 }
