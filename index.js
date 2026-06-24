@@ -45,46 +45,51 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
-// Rutas
 const ticketRoutes = require("./routes/ticket.routes");
 const outlookRoutes = require("./routes/outlook.routes");
 const userRoutes = require("./routes/user.routes");
 
-// Jobs
-const { iniciarJobTickets } = require("./job/ticket.job");
-const { iniciarJobSeguimientos } = require("./job/followup-mailer.job");
-const { iniciarJobReplies } = require("./job/reply-processor.job");
+const {
+  iniciarJobTickets
+} = require("./job/ticket.job");
 
-console.log("🚀 Servicio iniciado...");
+const {
+  iniciarJobSeguimientos
+} = require("./job/followup-mailer.job");
 
-// Middlewares
+const {
+  iniciarJobReplies
+} = require("./job/reply-processor.job");
+
+console.log("Servicio iniciado...");
+
 app.use(express.json());
 
-// Endpoints
-app.use("/api/tickets", ticketRoutes);
-app.use("/api/correos", outlookRoutes);
-app.use("/api/users", userRoutes);
+app.use(
+  "/api/tickets",
+  ticketRoutes
+);
 
-// 🔹 Iniciar jobs SOLO UNA VEZ
-function iniciarJobs() {
-  console.log("🧾 Iniciando monitor de tickets...");
-  iniciarJobTickets();
+app.use(
+  "/api/correos",
+  outlookRoutes
+);
 
-  console.log("📩 Iniciando monitor de seguimientos GLPI...");
-  iniciarJobSeguimientos();
+app.use(
+  "/api/users",
+  userRoutes
+);
 
-  console.log("💬 Iniciando procesador de respuestas de usuario...");
-  iniciarJobReplies(); // ← ACTÍVALO si ya lo corregiste
-}
+iniciarJobTickets();
+console.log("Activando monitor de respuestas GLPI...");
+iniciarJobSeguimientos();
+console.log("Activando procesador de respuestas de usuario...");
+// iniciarJobReplies();
 
-// Ruta base
 app.get("/", (req, res) => {
-  res.send("GLPI Job Running ✅");
+  res.send("GLPI Job Running");
 });
 
-// Levantar servidor y luego iniciar jobs
 app.listen(PORT, () => {
-  console.log(`🌐 Servidor escuchando en puerto ${PORT}`);
-  
-  iniciarJobs(); // ← IMPORTANTE: iniciar después de levantar server
+  console.log(`Servidor escuchando en ${PORT}`);
 });
