@@ -7,7 +7,11 @@ const statePath = path.join(stateDir, "followups-enviados.json");
 function leerEstado() {
   try {
     if (!fs.existsSync(statePath)) {
-      return { inicializado: false, enviados: [] };
+      return {
+        inicializado: false,
+        enviados: [],
+        baseline: { followup: 0, solution: 0 },
+      };
     }
 
     const contenido = fs.readFileSync(statePath, "utf8");
@@ -15,7 +19,9 @@ function leerEstado() {
 
     return {
       inicializado: Boolean(estado.inicializado),
-      enviados: Array.isArray(estado.enviados) ? estado.enviados : [],
+      enviados: Array.isArray(estado.enviados)
+        ? estado.enviados.map(String)
+        : [],
       baseline: {
         followup: Number(estado.baseline?.followup || 0),
         solution: Number(estado.baseline?.solution || 0),
@@ -25,10 +31,7 @@ function leerEstado() {
     return {
       inicializado: false,
       enviados: [],
-      baseline: {
-        followup: 0,
-        solution: 0,
-      },
+      baseline: { followup: 0, solution: 0 },
     };
   }
 }
@@ -39,29 +42,34 @@ function guardarEstado(estado) {
 }
 
 function normalizarIdEvento(eventoId) {
-  return String(eventoId || "").trim();
+  if (!eventoId) return null;
+  return String(eventoId).trim();
 }
 
 function seguimientoYaEnviado(followupId) {
   const estado = leerEstado();
   const id = normalizarIdEvento(followupId);
 
-  return estado.enviados.map(String).includes(id);
+  if (!id) return false;
+
+  return estado.enviados.includes(id);
 }
 
 function marcarSeguimientosEnviados(followupIds, inicializado = true) {
   const estado = leerEstado();
-  const enviados = new Set(estado.enviados.map(String));
+  const enviados = new Set(estado.enviados);
 
   for (const followupId of followupIds) {
     const id = normalizarIdEvento(followupId);
-    if (id) enviados.add(id);
+    if (!id) continue;
+
+    enviados.add(id);
   }
 
   guardarEstado({
     ...estado,
     inicializado,
-    enviados: [...enviados].slice(-1000),
+    enviados: Array.from(enviados).slice(-1000),
   });
 }
 
