@@ -55,23 +55,42 @@ async function obtenerMessageIdPorTicket(ticketId) {
   return mapa.messages[String(ticketId)] || null;
 }
 
+// ✅ 🔥 CORREGIDO: prioridad correcta
 async function buscarTicketIdPorMessageId(messageId) {
   if (!messageId) return null;
   const mapa = await leerMapa();
-  
-  // Buscar primero en mapa.processed (para mensajes de respuesta)
+
+  // 1. PRIMERO buscar en mensajes originales
+  const entry = Object.entries(mapa.messages)
+    .find(([, msgId]) => msgId === String(messageId));
+
+  if (entry) {
+    return entry[0];
+  }
+
+  // 2. LUEGO buscar en procesados (respuestas)
   if (mapa.processed && mapa.processed[String(messageId)]) {
     return mapa.processed[String(messageId)];
   }
 
-  const entry = Object.entries(mapa.messages).find(([, msgId]) => msgId === messageId);
-  return entry ? entry[0] : null;
+  return null;
 }
 
 async function buscarTicketIdPorConversationId(conversationId) {
   if (!conversationId) return null;
   const mapa = await leerMapa();
   return mapa.conversations[String(conversationId)] || null;
+}
+
+// ✅ 🔥 NUEVO: método inteligente (CLAVE)
+async function resolverTicket(messageId, conversationId) {
+  let ticketId = await buscarTicketIdPorMessageId(messageId);
+  if (ticketId) return ticketId;
+
+  ticketId = await buscarTicketIdPorConversationId(conversationId);
+  if (ticketId) return ticketId;
+
+  return null;
 }
 
 async function lockMessageId(messageId) {
@@ -99,14 +118,12 @@ async function guardarMessageIdParaTicket(ticketId, messageId, conversationId) {
   if (!mapa.conversations) mapa.conversations = {};
 
   if (messageId) {
-    // No sobrescribir si ya existe un mapeo para este ticket
     if (!mapa.messages[String(ticketId)]) {
-      mapa.messages[String(ticketId)] = messageId;
+      mapa.messages[String(ticketId)] = String(messageId);
     }
   }
 
   if (conversationId) {
-    // Guardar mapeo de conversación sólo si no existe (evitar sobrescribir vínculo original)
     if (!mapa.conversations[String(conversationId)]) {
       mapa.conversations[String(conversationId)] = String(ticketId);
     }
@@ -126,9 +143,9 @@ module.exports = {
   obtenerMessageIdPorTicket,
   buscarTicketIdPorMessageId,
   buscarTicketIdPorConversationId,
+  resolverTicket, // ✅ IMPORTANTE
   guardarMessageIdParaTicket,
   registrarMensajeProcesado,
   lockMessageId,
   unlockMessageId,
 };
-
