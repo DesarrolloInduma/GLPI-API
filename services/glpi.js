@@ -477,6 +477,25 @@ async function vincularDocumentoATicket(ticketId, documentId) {
   return response.data;
 }
 
+/**
+ * Obtiene los detalles completos de un seguimiento (ITILFollowup)
+ * Útil para saber quién fue el autor (users_id)
+ */
+async function obtenerSeguimientoGLPI(followupId) {
+  const sessionToken = await iniciarSesionGLPI();
+
+  try {
+    const response = await axios.get(
+      `${process.env.GLPI_URL}/ITILFollowup/${followupId}`,
+      { headers: headersGLPI(sessionToken) }
+    );
+    return response.data;
+  } catch (error) {
+    console.error(`Error al obtener seguimiento ${followupId}:`, error.message);
+    return null;
+  }
+}
+
 module.exports = {
   obtenerTicketsGLPI,
   obtenerTicketGLPI,
@@ -492,4 +511,5 @@ module.exports = {
   agregarUsuarioATicket,
   subirDocumentoGLPI,
   vincularDocumentoATicket,
+  obtenerSeguimientoGLPI,
 };
