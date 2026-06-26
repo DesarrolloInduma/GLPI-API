@@ -108,17 +108,26 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         const email = correo.from?.emailAddress?.address || "sin-correo";
         const nombre = correo.from?.emailAddress?.name || "";
 
-        // 👤 BUSCAR TÉCNICO
-        const recipients = [...(correo.toRecipients || []), ...(correo.ccRecipients || [])];
+        // ==================== DETECCIÓN MEJORADA DE TÉCNICO ====================
+        const recipients = [
+          ...(correo.toRecipients || []),
+          ...(correo.ccRecipients || [])
+        ];
+
         let tecnicoId = 0;
+        console.log(`🔍 Buscando técnico en correo ${correo.id} - Asunto: "${asunto}"`);
 
         for (const d of recipients) {
           const addr = d?.emailAddress?.address;
           if (!addr) continue;
 
+          console.log(`   → Revisando destinatario: ${addr}`);
+
+          // Buscar por email
           let usuario = await buscarUsuarioGLPIPorEmail(addr);
           let id = usuario?.id || 0;
 
+          // Si no encuentra, buscar por login
           if (!id) {
             const login = addr.split("@")[0];
             const userByLogin = await buscarUsuarioGLPIPorLogin(login);
@@ -127,8 +136,13 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
           if (id && TECNICOS_PERMITIDOS.includes(id)) {
             tecnicoId = id;
+            console.log(`✅ Técnico encontrado: ID ${id} (${addr})`);
             break;
           }
+        }
+
+        if (tecnicoId === 0) {
+          console.warn(`⚠️ No se encontró técnico permitido en los destinatarios del correo`);
         }
 
         // 📎 ADJUNTOS
@@ -152,13 +166,13 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         if (ticket?.id) {
           await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
 
-          // ==================== ASIGNACIÓN MEJORADA ====================
+          // Asignación reforzada
           if (tecnicoId && tecnicoId > 0) {
             try {
-              await agregarUsuarioATicket(ticket.id, tecnicoId, 2); // 2 = Asignado
-              console.log(`✅ Técnico ${tecnicoId} asignado correctamente al ticket #${ticket.id}`);
+              await agregarUsuarioATicket(ticket.id, tecnicoId, 2);
+              console.log(`✅ Técnico ${tecnicoId} asignado al ticket #${ticket.id}`);
             } catch (e) {
-              console.error(`❌ Error asignando técnico ${tecnicoId} al ticket #${ticket.id}:`, e.message);
+              console.error(`❌ Error asignando técnico:`, e.message);
             }
           }
 
@@ -167,9 +181,8 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           if (adicional) {
             try {
               await agregarUsuarioATicket(ticket.id, adicional, 2);
-              console.log(`✅ Asignación doble ${adicional} agregada al ticket #${ticket.id}`);
             } catch (e) {
-              console.error(`❌ Error en asignación doble:`, e.message);
+              console.error(`❌ Error asignación doble:`, e.message);
             }
           }
 
@@ -207,7 +220,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
   }
 }
 
-// Las otras funciones se mantienen igual
+// Resto de funciones sin cambios
 async function obtenerTickets(req, res) {
   const tickets = await obtenerTicketsGLPI();
   res.json({ ok: true, tickets });
