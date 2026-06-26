@@ -108,7 +108,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         const email = correo.from?.emailAddress?.address || "sin-correo";
         const nombre = correo.from?.emailAddress?.name || "";
 
-        // ==================== DETECCIÓN MEJORADA DE TÉCNICO ====================
+        // ==================== DETECCIÓN DE TÉCNICO ====================
         const recipients = [
           ...(correo.toRecipients || []),
           ...(correo.ccRecipients || [])
@@ -117,17 +117,16 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         let tecnicoId = 0;
         console.log(`🔍 Buscando técnico en correo ${correo.id} - Asunto: "${asunto}"`);
 
+        // 🔍 1. Buscar en destinatarios
         for (const d of recipients) {
           const addr = d?.emailAddress?.address;
           if (!addr) continue;
 
           console.log(`   → Revisando destinatario: ${addr}`);
 
-          // Buscar por email
           let usuario = await buscarUsuarioGLPIPorEmail(addr);
           let id = usuario?.id || 0;
 
-          // Si no encuentra, buscar por login
           if (!id) {
             const login = addr.split("@")[0];
             const userByLogin = await buscarUsuarioGLPIPorLogin(login);
@@ -141,8 +140,10 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           }
         }
 
-        if (tecnicoId === 0) {
-          console.warn(`⚠️ No se encontró técnico permitido en los destinatarios del correo`);
+        // 🔥 2. SI NO ENCUENTRA → ASIGNAR POR DEFECTO
+        if (!tecnicoId) {
+          tecnicoId = TECNICOS_PERMITIDOS[0];
+          console.log(`⚙️ Asignando técnico por defecto: ${tecnicoId}`);
         }
 
         // 📎 ADJUNTOS
@@ -153,7 +154,11 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
             if (!detalle.contentBytes) continue;
 
-            const docId = await subirDocumentoGLPI(detalle.name, detalle.contentBytes, detalle.contentType);
+            const docId = await subirDocumentoGLPI(
+              detalle.name,
+              detalle.contentBytes,
+              detalle.contentType
+            );
             docIds.push(docId);
           }
         } catch (e) {
@@ -166,7 +171,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         if (ticket?.id) {
           await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
 
-          // Asignación reforzada
+          // ✅ Asignar técnico
           if (tecnicoId && tecnicoId > 0) {
             try {
               await agregarUsuarioATicket(ticket.id, tecnicoId, 2);
@@ -176,17 +181,18 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             }
           }
 
-          // Asignación doble
+          // 🔁 Asignación doble
           const adicional = ASIGNACIONES_DOBLES[tecnicoId];
           if (adicional) {
             try {
               await agregarUsuarioATicket(ticket.id, adicional, 2);
+              console.log(`👥 Técnico adicional ${adicional} asignado`);
             } catch (e) {
               console.error(`❌ Error asignación doble:`, e.message);
             }
           }
 
-          // Vincular adjuntos
+          // 📎 Vincular adjuntos
           for (const docId of docIds) {
             await vincularDocumentoATicket(ticket.id, docId);
           }
@@ -220,7 +226,8 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
   }
 }
 
-// Resto de funciones sin cambios
+// ================= RESTO IGUAL =================
+
 async function obtenerTickets(req, res) {
   const tickets = await obtenerTicketsGLPI();
   res.json({ ok: true, tickets });
