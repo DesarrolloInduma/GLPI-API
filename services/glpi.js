@@ -371,20 +371,31 @@ async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, te
     content: descripcion,
     priority: 3,
     entities_id: 1,
+    status: 2,                    // ← En curso (asignado)
     _users_id_requester: userId,
   };
 
-  if (tecnicoId && tecnicoId !== 0) {
+  // AUTO-ASIGNACIÓN
+  if (tecnicoId && tecnicoId > 0) {
     input._users_id_assign = tecnicoId;
+    console.log(`🔧 Asignando técnico ${tecnicoId} durante creación del ticket`);
+  } else {
+    console.log(`⚠️ No se asignó técnico (tecnicoId = ${tecnicoId})`);
   }
 
-  const response = await axios.post(
-    `${process.env.GLPI_URL}/Ticket`,
-    { input },
-    { headers: headersGLPI(sessionToken) }
-  );
+  try {
+    const response = await axios.post(
+      `${process.env.GLPI_URL}/Ticket`,
+      { input },
+      { headers: headersGLPI(sessionToken) }
+    );
 
-  return response.data;
+    console.log(`✅ Ticket creado #${response.data.id} con técnico: ${tecnicoId}`);
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error creando ticket:", error.response?.data || error.message);
+    throw error;
+  }
 }
 
 async function agregarUsuarioATicket(ticketId, userId, type = 2) {
