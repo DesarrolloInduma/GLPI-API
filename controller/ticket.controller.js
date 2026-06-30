@@ -27,12 +27,12 @@ const {
 } = require("../services/email-map");
 
 // ✅ SOLO ESTOS TÉCNICOS PUEDEN SER ASIGNADOS
-const TECNICOS_PERMITIDOS = [7, 37, 63];
+const TECNICOS_PERMITIDOS = [7, 63, 66];
 
 // ✅ REGLAS DE ASIGNACIÓN DOBLE
 const ASIGNACIONES_DOBLES = {
   7: 52,
-  37: 53,
+  66: 53,
   63: 55,
 };
 
