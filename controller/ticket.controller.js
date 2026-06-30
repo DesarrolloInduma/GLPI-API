@@ -73,13 +73,6 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         }
         try { lockPath = await lockMessageId(correo.id); } catch { continue; }
 
-        // ================= IDENTIFICAR SOLICITANTE REAL =================
-        const solicitanteEmail = correo.from?.emailAddress?.address || "sin-correo";
-        const nombre = correo.from?.emailAddress?.name || "";
-
-        const solicitante = await buscarUsuarioGLPIPorEmail(solicitanteEmail);
-        const solicitanteId = solicitante?.id || null;
-
         // ================= RESPUESTAS =================
         let ticketRelacionado = null;
 
@@ -119,6 +112,9 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         let descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
         descripcion = limpiarRespuestaCorreo(descripcion);
 
+        const email = correo.from?.emailAddress?.address || "sin-correo";
+        const nombre = correo.from?.emailAddress?.name || "";
+
         // ================= DETECTAR TÉCNICO =================
         const recipients = [...(correo.toRecipients || []), ...(correo.ccRecipients || [])];
         let tecnicoId = 0;
@@ -140,19 +136,13 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
           console.log("🔍 Buscando técnico:", addr, "=>", id);
 
-          // 🚨 NO permitir que el solicitante sea técnico
-          if (id && id === solicitanteId) {
-            console.log("⛔ Ignorando solicitante como técnico:", id);
-            continue;
-          }
-
           if (id && TECNICOS_PERMITIDOS.includes(id)) {
             tecnicoId = id;
             break;
           }
         }
 
-        // 🔥 FALLBACK
+        // 🔥 FALLBACK (opcional)
         if (!tecnicoId) {
           tecnicoId = 7;
           console.log("⚠️ No se encontró técnico, asignando por defecto:", tecnicoId);
@@ -182,7 +172,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         const ticket = await crearTicketGLPI(
           asunto,
           descripcion,
-          solicitanteEmail, // 🔥 SOLO ESTE SE USA
+          email,
           nombre,
           tecnicoId
         );
@@ -191,6 +181,8 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
 
           console.log(`✅ Ticket #${ticket.id} creado con técnico ${tecnicoId}`);
+
+          // ❌ ELIMINADO: doble asignación del mismo técnico
 
           // ================= ASIGNACIÓN DOBLE =================
           const adicional = ASIGNACIONES_DOBLES[tecnicoId];
