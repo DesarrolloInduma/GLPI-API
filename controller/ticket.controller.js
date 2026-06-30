@@ -188,7 +188,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           const adicional = ASIGNACIONES_DOBLES[tecnicoId];
           if (adicional) {
             try {
-              await agregarUsuarioATicket(ticket.id, adicional, 2);
+            await agregarUsuarioATicket(ticket.id, adicional, 1); // 👈 observador
               console.log(`✅ Técnico adicional ${adicional} asignado`);
             } catch (e) {
               console.error("❌ Error asignación doble:", e.message);
