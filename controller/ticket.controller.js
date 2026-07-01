@@ -105,11 +105,8 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           );
         }
 
-        if (!ticketRelacionado && correo.conversationId) {
-          ticketRelacionado = await buscarTicketIdPorConversationId(
-            correo.conversationId
-          );
-        }
+        // Nota: NO usamos conversationId como fallback para evitar que un nuevo correo
+        // del mismo hilo sea tratado automáticamente como respuesta al ticket.
 
         // ================= RESPUESTAS =================
         if (ticketRelacionado) {
