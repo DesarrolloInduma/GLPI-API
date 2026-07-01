@@ -117,20 +117,23 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             correo.body?.content || correo.bodyPreview || "Sin contenido";
           contenido = limpiarRespuestaCorreo(contenido);
 
-          if (contenido) {
-            console.log("📝 Respuesta detectada → agregando al ticket");
+          if (esTecnico) {
+            console.log("🛠️ Respuesta de técnico → SE AGREGA");
+
             await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
+
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
-              tipo: "RESPUESTA",
+              tipo: "RESPUESTA_TECNICO",
             });
           } else {
-            console.log("⚠️ Respuesta detectada sin contenido útil → ignorada");
+            console.log("👤 Cliente respondió → IGNORADO");
+
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
-              tipo: "RESPUESTA_SIN_CONTENIDO",
+              tipo: "RESPUESTA_CLIENTE_IGNORADA",
             });
           }
 
@@ -188,6 +191,12 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             tecnicoId = id;
             break;
           }
+        }
+
+        // 🔥 AUTOASIGNACIÓN SI EL REMITENTE ES TÉCNICO
+        if (!tecnicoId && esTecnico) {
+          tecnicoId = solicitanteId;
+          console.log("🔥 Autoasignando desde FROM:", tecnicoId);
         }
 
         // 🔥 FALLBACK
