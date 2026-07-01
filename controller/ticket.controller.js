@@ -117,23 +117,20 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             correo.body?.content || correo.bodyPreview || "Sin contenido";
           contenido = limpiarRespuestaCorreo(contenido);
 
-          if (esTecnico) {
-            console.log("🛠️ Respuesta de técnico → SE AGREGA");
-
+          if (contenido) {
+            console.log("📝 Respuesta detectada → agregando al ticket");
             await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
-
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
-              tipo: "RESPUESTA_TECNICO",
+              tipo: "RESPUESTA",
             });
           } else {
-            console.log("👤 Cliente respondió → IGNORADO");
-
+            console.log("⚠️ Respuesta detectada sin contenido útil → ignorada");
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
-              tipo: "RESPUESTA_CLIENTE_IGNORADA",
+              tipo: "RESPUESTA_SIN_CONTENIDO",
             });
           }
 
