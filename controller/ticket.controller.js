@@ -190,12 +190,6 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           }
         }
 
-        // 🔥 AUTOASIGNACIÓN SI EL REMITENTE ES TÉCNICO
-        if (!tecnicoId && esTecnico) {
-          tecnicoId = solicitanteId;
-          console.log("🔥 Autoasignando desde FROM:", tecnicoId);
-        }
-
         // 🔥 FALLBACK
         if (!tecnicoId) {
           tecnicoId = 7;
