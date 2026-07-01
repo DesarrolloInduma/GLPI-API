@@ -26,16 +26,16 @@ const {
   unlockMessageId,
 } = require("../services/email-map");
 
-// ✅ SOLO ESTOS TÉCNICOS PUEDEN SER ASIGNADOS
+// ================= CONFIG =================
 const TECNICOS_PERMITIDOS = [7, 63, 66];
 
-// ✅ REGLAS DE ASIGNACIÓN DOBLE
 const ASIGNACIONES_DOBLES = {
   7: 52,
   66: 53,
   63: 55,
 };
 
+// ================= UTIL =================
 function limpiarRespuestaCorreo(html) {
   if (!html) return "";
 
@@ -54,6 +54,7 @@ function limpiarRespuestaCorreo(html) {
   return limpio.trim();
 }
 
+// ================= PROCESO PRINCIPAL =================
 async function procesarCorreosNoLeidos(req = null, res = null) {
   try {
     const correos = await obtenerCorreosNoLeidos();
@@ -68,36 +69,81 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         if (!correo?.id || procesadosIds.has(correo.id)) continue;
         procesadosIds.add(correo.id);
 
+        // ================= LOCK =================
         if (correo.conversationId) {
-          try { convLockPath = await lockMessageId(`conv:${correo.conversationId}`); } catch { continue; }
+          try {
+            convLockPath = await lockMessageId(`conv:${correo.conversationId}`);
+          } catch {
+            continue;
+          }
         }
-        try { lockPath = await lockMessageId(correo.id); } catch { continue; }
 
-        // ================= RESPUESTAS =================
+        try {
+          lockPath = await lockMessageId(correo.id);
+        } catch {
+          continue;
+        }
+
+        // ================= REMITENTE =================
+        const email = correo.from?.emailAddress?.address || "sin-correo";
+        const nombre = correo.from?.emailAddress?.name || "";
+
+        const usuario = await buscarUsuarioGLPIPorEmail(email);
+        const solicitanteId = usuario?.id || null;
+
+        const esTecnico =
+          solicitanteId && TECNICOS_PERMITIDOS.includes(solicitanteId);
+
+        console.log("📧 FROM:", email, "| ID:", solicitanteId, "| Técnico:", esTecnico);
+
+        // ================= DETECTAR TICKET =================
         let ticketRelacionado = null;
 
         if (correo.parentMessageId) {
-          ticketRelacionado = await buscarTicketIdPorMessageId(correo.parentMessageId);
+          ticketRelacionado = await buscarTicketIdPorMessageId(
+            correo.parentMessageId
+          );
         }
 
         if (!ticketRelacionado && correo.conversationId) {
-          ticketRelacionado = await buscarTicketIdPorConversationId(correo.conversationId);
+          ticketRelacionado = await buscarTicketIdPorConversationId(
+            correo.conversationId
+          );
         }
 
+        // ================= RESPUESTAS =================
         if (ticketRelacionado) {
-          let contenido = correo.body?.content || correo.bodyPreview || "Sin contenido";
+          let contenido =
+            correo.body?.content || correo.bodyPreview || "Sin contenido";
           contenido = limpiarRespuestaCorreo(contenido);
 
-          await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
-          await guardarMessageIdParaTicket(ticketRelacionado, correo.id, correo.conversationId);
+          if (esTecnico) {
+            console.log("🛠️ Respuesta de técnico → SE AGREGA");
+
+            await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
+
+            resultados.push({
+              correoId: correo.id,
+              ticketId: ticketRelacionado,
+              tipo: "RESPUESTA_TECNICO",
+            });
+          } else {
+            console.log("👤 Cliente respondió → IGNORADO");
+
+            resultados.push({
+              correoId: correo.id,
+              ticketId: ticketRelacionado,
+              tipo: "RESPUESTA_CLIENTE_IGNORADA",
+            });
+          }
+
+          await guardarMessageIdParaTicket(
+            ticketRelacionado,
+            correo.id,
+            correo.conversationId
+          );
+
           await marcarCorreoLeido(correo.id);
-
-          resultados.push({
-            correoId: correo.id,
-            ticketId: ticketRelacionado,
-            tipo: "RESPUESTA"
-          });
-
           continue;
         }
 
@@ -109,24 +155,29 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
         // ================= NUEVO TICKET =================
         const asunto = correo.subject || "Sin asunto";
-        let descripcion = correo.body?.content || correo.bodyPreview || "Sin contenido";
+        let descripcion =
+          correo.body?.content || correo.bodyPreview || "Sin contenido";
         descripcion = limpiarRespuestaCorreo(descripcion);
 
-        const email = correo.from?.emailAddress?.address || "sin-correo";
-        const nombre = correo.from?.emailAddress?.name || "";
-
         // ================= DETECTAR TÉCNICO =================
-        const recipients = [...(correo.toRecipients || []), ...(correo.ccRecipients || [])];
+        const recipients = [
+          ...(correo.toRecipients || []),
+          ...(correo.ccRecipients || []),
+        ];
+
         let tecnicoId = 0;
 
-        console.log("📨 Destinatarios:", recipients.map(r => r?.emailAddress?.address));
+        console.log(
+          "📨 Destinatarios:",
+          recipients.map((r) => r?.emailAddress?.address)
+        );
 
         for (const d of recipients) {
           const addr = d?.emailAddress?.address;
           if (!addr) continue;
 
-          let usuario = await buscarUsuarioGLPIPorEmail(addr);
-          let id = usuario?.id || 0;
+          let user = await buscarUsuarioGLPIPorEmail(addr);
+          let id = user?.id || 0;
 
           if (!id) {
             const login = addr.split("@")[0];
@@ -142,16 +193,24 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           }
         }
 
-        // 🔥 FALLBACK (opcional)
+        // 🔥 AUTOASIGNACIÓN SI EL REMITENTE ES TÉCNICO
+        if (!tecnicoId && esTecnico) {
+          tecnicoId = solicitanteId;
+          console.log("🔥 Autoasignando desde FROM:", tecnicoId);
+        }
+
+        // 🔥 FALLBACK
         if (!tecnicoId) {
           tecnicoId = 7;
-          console.log("⚠️ No se encontró técnico, asignando por defecto:", tecnicoId);
+          console.log("⚠️ Fallback técnico:", tecnicoId);
         }
 
         // ================= ADJUNTOS =================
         const docIds = [];
+
         try {
           const adjuntos = await obtenerAdjuntosDeCorreo(correo.id);
+
           for (const adj of adjuntos) {
             const detalle = await obtenerDetalleAdjunto(correo.id, adj.id);
             if (!detalle.contentBytes) continue;
@@ -178,24 +237,27 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         );
 
         if (ticket?.id) {
-          await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
+          await guardarMessageIdParaTicket(
+            ticket.id,
+            correo.id,
+            correo.conversationId
+          );
 
           console.log(`✅ Ticket #${ticket.id} creado con técnico ${tecnicoId}`);
 
-          // ❌ ELIMINADO: doble asignación del mismo técnico
-
           // ================= ASIGNACIÓN DOBLE =================
           const adicional = ASIGNACIONES_DOBLES[tecnicoId];
+
           if (adicional) {
             try {
               await agregarUsuarioATicket(ticket.id, adicional, 1);
-              console.log(`✅ Técnico adicional ${adicional} asignado`);
+              console.log(`✅ Técnico adicional ${adicional}`);
             } catch (e) {
               console.error("❌ Error asignación doble:", e.message);
             }
           }
 
-          // ================= ADJUNTOS =================
+          // ================= VINCULAR ADJUNTOS =================
           for (const docId of docIds) {
             await vincularDocumentoATicket(ticket.id, docId);
           }
@@ -207,15 +269,20 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           correoId: correo.id,
           ticketId: ticket?.id,
           tecnicoId,
-          tipo: "NUEVO"
+          tipo: "NUEVO",
         });
 
       } catch (error) {
         console.error(`❌ Error procesando correo ${correo.id}:`, error.message);
-        resultados.push({ correoId: correo.id, error: error.message });
+
+        resultados.push({
+          correoId: correo.id,
+          error: error.message,
+        });
       } finally {
         if (lockPath) await unlockMessageId(correo.id);
-        if (convLockPath) await unlockMessageId(`conv:${correo.conversationId}`);
+        if (convLockPath)
+          await unlockMessageId(`conv:${correo.conversationId}`);
       }
     }
 
@@ -224,13 +291,18 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
   } catch (error) {
     console.error("❌ Error general:", error.message);
-    if (res) return res.status(500).json({ ok: false, error: error.message });
+
+    if (res)
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+      });
+
     throw error;
   }
 }
 
-// ================= RESTO =================
-
+// ================= REST =================
 async function obtenerTickets(req, res) {
   const tickets = await obtenerTicketsGLPI();
   res.json({ ok: true, tickets });
@@ -253,7 +325,11 @@ async function crearTicketDesdeCorreo(req, res) {
     0
   );
 
-  await guardarMessageIdParaTicket(ticket.id, correo.id, correo.conversationId);
+  await guardarMessageIdParaTicket(
+    ticket.id,
+    correo.id,
+    correo.conversationId
+  );
 
   res.json({ ok: true, ticket });
 }
