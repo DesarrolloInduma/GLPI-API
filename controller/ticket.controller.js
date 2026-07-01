@@ -160,43 +160,46 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         descripcion = limpiarRespuestaCorreo(descripcion);
 
         // ================= DETECTAR TÉCNICO =================
-        const recipients = [
-          ...(correo.toRecipients || []),
-          ...(correo.ccRecipients || []),
-        ];
+        const toRecipients = correo.toRecipients || [];
+        const ccRecipients = correo.ccRecipients || [];
 
         let tecnicoId = 0;
 
         console.log(
-          "📨 Destinatarios:",
-          recipients.map((r) => r?.emailAddress?.address)
+          "📨 Destinatarios TO:",
+          toRecipients.map((r) => r?.emailAddress?.address)
+        );
+        console.log(
+          "📨 Destinatarios CC:",
+          ccRecipients.map((r) => r?.emailAddress?.address)
         );
 
-        for (const d of recipients) {
-          const addr = d?.emailAddress?.address;
-          if (!addr) continue;
+        const buscarTecnicoEn = async (lista) => {
+          for (const d of lista) {
+            const addr = d?.emailAddress?.address;
+            if (!addr) continue;
 
-          let user = await buscarUsuarioGLPIPorEmail(addr);
-          let id = user?.id || 0;
+            let user = await buscarUsuarioGLPIPorEmail(addr);
+            let id = user?.id || 0;
 
-          if (!id) {
-            const login = addr.split("@")[0];
-            const userByLogin = await buscarUsuarioGLPIPorLogin(login);
-            id = userByLogin?.id || 0;
+            if (!id) {
+              const login = addr.split("@")[0];
+              const userByLogin = await buscarUsuarioGLPIPorLogin(login);
+              id = userByLogin?.id || 0;
+            }
+
+            console.log("🔍 Buscando técnico:", addr, "=>", id);
+
+            if (id && TECNICOS_PERMITIDOS.includes(id)) {
+              return id;
+            }
           }
+          return 0;
+        };
 
-          console.log("🔍 Buscando técnico:", addr, "=>", id);
-
-          if (id && TECNICOS_PERMITIDOS.includes(id)) {
-            tecnicoId = id;
-            break;
-          }
-        }
-
-        // 🔥 AUTOASIGNACIÓN SI EL REMITENTE ES TÉCNICO
-        if (!tecnicoId && esTecnico) {
-          tecnicoId = solicitanteId;
-          console.log("🔥 Autoasignando desde FROM:", tecnicoId);
+        tecnicoId = await buscarTecnicoEn(toRecipients);
+        if (!tecnicoId) {
+          tecnicoId = await buscarTecnicoEn(ccRecipients);
         }
 
         // 🔥 FALLBACK
@@ -250,7 +253,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
           if (adicional) {
             try {
-              await agregarUsuarioATicket(ticket.id, adicional, 1);
+              await agregarUsuarioATicket(ticket.id, adicional, 2);
               console.log(`✅ Técnico adicional ${adicional}`);
             } catch (e) {
               console.error("❌ Error asignación doble:", e.message);
