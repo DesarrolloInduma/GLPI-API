@@ -156,12 +156,9 @@ async function procesarRepliesNuevas() {
       if (correo.parentMessageId) {
         ticketId = await buscarTicketIdPorMessageId(correo.parentMessageId);
       }
-
-      // Evitar que un nuevo mensaje en el mismo hilo se considere automáticamente
-      // como respuesta basada solo en conversationId.
-      // if (!ticketId && correo.conversationId) {
-      //   ticketId = await buscarTicketIdPorConversationId(correo.conversationId);
-      // }
+      if (!ticketId && correo.conversationId) {
+        ticketId = await buscarTicketIdPorConversationId(correo.conversationId);
+      }
 
       if (!ticketId) {
         console.log(`[REPLY] No se encontró ticket para correo ${correo.id}`);
