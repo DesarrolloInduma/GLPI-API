@@ -128,15 +128,17 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
               tipo: "RESPUESTA_TECNICO",
             });
           } else {
-            console.log("👤 Cliente respondió → SE AGREGA SOLO EN GLPI (sin notificaciones)");
+            console.log("👤 Cliente respondió → SE AGREGA SOLO EN GLPI (sin notificaciones ni correo)");
 
-            // Guardar el mensaje como seguimiento en GLPI pero sin disparar notificaciones
-            await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
+            // Guardar el mensaje como seguimiento en GLPI atribuido al cliente
+            // El job de seguimientos no enviará notificación porque detectará que el autor es el solicitante
+            await agregarRespuestaTicketGLPI(ticketRelacionado, contenido, solicitanteId);
 
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
               tipo: "RESPUESTA_CLIENTE_GUARDADA",
+              solicitanteId: solicitanteId
             });
           }
 

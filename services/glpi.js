@@ -236,22 +236,25 @@ async function obtenerSolicitanteTicketGLPI(ticketId) {
   };
 }
 
-async function agregarRespuestaTicketGLPI(ticketId, contenido) {
+async function agregarRespuestaTicketGLPI(ticketId, contenido, usuarioId = null) {
   const sessionToken = await iniciarSesionGLPI();
+
+  const input = {
+    itemtype: "Ticket",
+    items_id: ticketId,
+    content: contenido,
+    is_private: 0,
+    _disablenotif: true
+  };
+
+  // Si viene de un cliente, especificar el users_id
+  if (usuarioId && Number(usuarioId) > 0) {
+    input.users_id = Number(usuarioId);
+  }
 
   const response = await axios.post(
     `${process.env.GLPI_URL}/ITILFollowup`,
-    {
-      input: {
-        itemtype: "Ticket",
-        items_id: ticketId,
-        content: contenido,
-        is_private: 0,
-
-        // 🔥 SOLUCIÓN AL BUCLE
-        _disablenotif: true
-      },
-    },
+    { input },
     {
       headers: headersGLPI(sessionToken),
     }
