@@ -128,12 +128,15 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
               tipo: "RESPUESTA_TECNICO",
             });
           } else {
-            console.log("👤 Cliente respondió → IGNORADO");
+            console.log("👤 Cliente respondió → SE AGREGA SOLO EN GLPI (sin notificaciones)");
+
+            // Guardar el mensaje como seguimiento en GLPI pero sin disparar notificaciones
+            await agregarRespuestaTicketGLPI(ticketRelacionado, contenido);
 
             resultados.push({
               correoId: correo.id,
               ticketId: ticketRelacionado,
-              tipo: "RESPUESTA_CLIENTE_IGNORADA",
+              tipo: "RESPUESTA_CLIENTE_GUARDADA",
             });
           }
 

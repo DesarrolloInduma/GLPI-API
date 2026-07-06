@@ -2,6 +2,12 @@ const axios = require("axios");
 const cca = require("../config/azure");
 
 async function getAccessToken() {
+  if (!cca?.isConfigured) {
+    throw new Error(
+      "No hay credenciales de Outlook configuradas. Completa OUTLOOK_CLIENT_ID, OUTLOOK_TENANT_ID, OUTLOOK_CLIENT_SECRET y OUTLOOK_USER en el archivo .env."
+    );
+  }
+
   const tokenRequest = {
     scopes: ["https://graph.microsoft.com/.default"],
   };
