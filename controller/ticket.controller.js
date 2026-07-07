@@ -41,31 +41,37 @@ function limpiarRespuestaCorreo(html) {
 
   let limpio = html;
 
-  // Eliminar la línea de metadatos de Outlook: "El lun, 6 jul 2026 a las 16:59, Nombre (<email>) escribió:"
-  // También en inglés: "On Mon, Jul 6, 2026 at 4:59 PM, Name <email> wrote:"
-  limpio = limpio.replace(
-    /^(El|On)\s+[^:]+:\s*(>?.*)?$/gm,
-    ""
-  );
-
-  // Separadores clásicos
-  const separadores = [
-    "De:", "From:", "-----Original Message-----",
-    "Tu mensaje original:", "Asunto del ticket:"
-  ];
-
-  for (const sep of separadores) {
-    const index = limpio.indexOf(sep);
-    if (index !== -1) {
-      limpio = limpio.substring(0, index);
+  // 1. REMOVER LA LÍNEA DE METADATOS DEL ÚLTIMO CORREO
+  // Patrón: "El lun, 6 jul 2026 a las 16:59, Nombre (<email>) escribió:" o similar
+  // Buscar en HTML o texto plano
+  const metadatosRegex = /(El|On)\s+[^<]*?\d+\s+[^<]*?escribió|wrote[:\s]*(<[^>]*>)?/gi;
+  const match = limpio.match(metadatosRegex);
+  
+  if (match) {
+    const primerMetadato = limpio.indexOf(match[0]);
+    if (primerMetadato !== -1) {
+      // Tomar todo antes del metadato
+      limpio = limpio.substring(0, primerMetadato);
     }
   }
 
-  // Eliminar líneas que comienzan con ">" (citas)
-  limpio = limpio
-    .split("\n")
-    .filter(line => !line.trim().startsWith(">"))
-    .join("\n");
+  // 2. REMOVER CITAS ANTIGUAS (bloques de quoted-text de Outlook)
+  // Buscar divs con atributos de cita
+  limpio = limpio.replace(
+    /<div[^>]*style="[^"]*border-left[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+    ""
+  );
+  
+  // Remover bloques con clase "gmail_quote"
+  limpio = limpio.replace(
+    /<div[^>]*class="[^"]*gmail_quote[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+    ""
+  );
+
+  // 3. LIMPIAR HTML vacío que quedó
+  limpio = limpio.replace(/<br\s*\/?>\s*<br\s*\/?>/g, "<br>");
+  limpio = limpio.replace(/<p>\s*<\/p>/g, "");
+  limpio = limpio.replace(/<div>\s*<\/div>/g, "");
 
   return limpio.trim();
 }
