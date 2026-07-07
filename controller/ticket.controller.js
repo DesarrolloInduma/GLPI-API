@@ -27,7 +27,7 @@ const {
 } = require("../services/email-map");
 
 // ================= CONFIG =================
-const TECNICOS_PERMITIDOS = [7, 63, 66];
+const TECNICOS_PERMITIDOS = [7, 63, 66, 42];
 
 const ASIGNACIONES_DOBLES = {
   7: 52,
