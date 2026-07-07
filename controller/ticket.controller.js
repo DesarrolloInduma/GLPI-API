@@ -39,18 +39,34 @@ const ASIGNACIONES_DOBLES = {
 function limpiarRespuestaCorreo(html) {
   if (!html) return "";
 
+  let limpio = html;
+
+  // Eliminar la línea de metadatos de Outlook: "El lun, 6 jul 2026 a las 16:59, Nombre (<email>) escribió:"
+  // También en inglés: "On Mon, Jul 6, 2026 at 4:59 PM, Name <email> wrote:"
+  limpio = limpio.replace(
+    /^(El|On)\s+[^:]+:\s*(>?.*)?$/gm,
+    ""
+  );
+
+  // Separadores clásicos
   const separadores = [
     "De:", "From:", "-----Original Message-----",
     "Tu mensaje original:", "Asunto del ticket:"
   ];
 
-  let limpio = html;
   for (const sep of separadores) {
     const index = limpio.indexOf(sep);
     if (index !== -1) {
       limpio = limpio.substring(0, index);
     }
   }
+
+  // Eliminar líneas que comienzan con ">" (citas)
+  limpio = limpio
+    .split("\n")
+    .filter(line => !line.trim().startsWith(">"))
+    .join("\n");
+
   return limpio.trim();
 }
 
