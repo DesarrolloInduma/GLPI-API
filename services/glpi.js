@@ -374,15 +374,16 @@ async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, te
     content: descripcion,
     priority: 3,
     entities_id: 1,
-    status: 2,                    // ← En curso (asignado)
     _users_id_requester: userId,
   };
 
   // AUTO-ASIGNACIÓN
   if (tecnicoId && tecnicoId > 0) {
     input._users_id_assign = tecnicoId;
+    input.status = 2;  // En curso (asignado)
     console.log(`🔧 Asignando técnico ${tecnicoId} durante creación del ticket`);
   } else {
+    input.status = 1;  // Nuevo (sin asignación)
     console.log(`⚠️ No se asignó técnico (tecnicoId = ${tecnicoId})`);
   }
 

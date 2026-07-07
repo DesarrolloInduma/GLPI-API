@@ -218,15 +218,11 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           return 0;
         };
 
-        tecnicoId = await buscarTecnicoEn(toRecipients);
-        if (!tecnicoId) {
-          tecnicoId = await buscarTecnicoEn(ccRecipients);
-        }
+        tecnicoId = await buscarTecnicoEn([...toRecipients, ...ccRecipients]);
 
-        // 🔥 FALLBACK
+        // ❌ SIN FALLBACK - Si no encuentra técnico, se sube sin asignación
         if (!tecnicoId) {
-          tecnicoId = 7;
-          console.log("⚠️ Fallback técnico:", tecnicoId);
+          console.log("⚠️ No se encontró técnico - Se sube sin asignación");
         }
 
         // ================= ADJUNTOS =================
