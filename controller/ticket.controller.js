@@ -274,8 +274,9 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
           if (adicional) {
             try {
-              await agregarUsuarioATicket(ticket.id, adicional, 2);
-              console.log(`✅ Técnico adicional ${adicional}`);
+              // Tipo 3 = Observer (no reemplaza el asignado primario)
+              await agregarUsuarioATicket(ticket.id, adicional, 3);
+              console.log(`✅ Técnico adicional ${adicional} como observador`);
             } catch (e) {
               console.error("❌ Error asignación doble:", e.message);
             }
