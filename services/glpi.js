@@ -156,7 +156,7 @@ async function crearUsuario(email, sessionToken, nombreDisplay) {
         firstname,
         realname,
         is_active: 1,
-        entities_id: 1,
+        entities_id: Number(process.env.GLPI_ENTITY),
       },
     },
     { headers: headersGLPI(sessionToken) }
@@ -373,7 +373,7 @@ async function crearTicketGLPI(asunto, descripcion, email, nombreSolicitante, te
     name: asunto,
     content: descripcion,
     priority: 3,
-    entities_id: 1,
+         entities_id: Number(process.env.GLPI_ENTITY),
     _users_id_requester: userId,
   };
 
@@ -443,7 +443,7 @@ async function subirDocumentoGLPI(fileName, contentBase64, mimeType) {
     JSON.stringify({
       input: {
         name: fileName,
-        entities_id: 1,
+      entities_id: Number(process.env.GLPI_ENTITY),
         _filename: [fileName],
       },
     })
