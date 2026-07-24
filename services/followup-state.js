@@ -11,6 +11,7 @@ function leerEstado() {
         inicializado: false,
         enviados: [],
         baseline: { followup: 0, solution: 0 },
+        ticketStatus: {},
       };
     }
 
@@ -26,12 +27,16 @@ function leerEstado() {
         followup: Number(estado.baseline?.followup || 0),
         solution: Number(estado.baseline?.solution || 0),
       },
+      ticketStatus: estado.ticketStatus && typeof estado.ticketStatus === "object"
+        ? estado.ticketStatus
+        : {},
     };
   } catch {
     return {
       inicializado: false,
       enviados: [],
       baseline: { followup: 0, solution: 0 },
+      ticketStatus: {},
     };
   }
 }
@@ -86,9 +91,35 @@ function guardarBaseline(baseline) {
   });
 }
 
+function obtenerUltimoEstadoTicket(ticketId) {
+  const estado = leerEstado();
+  const key = String(ticketId || "").trim();
+  if (!key) return null;
+  return Number(estado.ticketStatus?.[key]?.status ?? NaN);
+}
+
+function guardarUltimoEstadoTicket(ticketId, status) {
+  const estado = leerEstado();
+  const key = String(ticketId || "").trim();
+  if (!key || Number.isNaN(Number(status))) return;
+
+  guardarEstado({
+    ...estado,
+    ticketStatus: {
+      ...(estado.ticketStatus || {}),
+      [key]: {
+        status: Number(status),
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+}
+
 module.exports = {
   leerEstado,
   seguimientoYaEnviado,
   marcarSeguimientosEnviados,
   guardarBaseline,
+  obtenerUltimoEstadoTicket,
+  guardarUltimoEstadoTicket,
 };

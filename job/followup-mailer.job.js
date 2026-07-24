@@ -4,6 +4,7 @@ const {
   obtenerSeguimientosRecientesGLPI,
   obtenerSolucionesRecientesGLPI,
   obtenerTicketGLPI,
+  obtenerTicketsGLPI,
   obtenerSolicitanteTicketGLPI,
   obtenerSeguimientoGLPI,
 } = require("../services/glpi");
@@ -23,6 +24,8 @@ const {
   seguimientoYaEnviado,
   marcarSeguimientosEnviados,
   guardarBaseline,
+  obtenerUltimoEstadoTicket,
+  guardarUltimoEstadoTicket,
 } = require("../services/followup-state");
 
 const ESTADOS_TICKET = {
@@ -230,6 +233,94 @@ async function enviarSeguimientosNuevos() {
   return enviados;
 }
 
+async function notificarCambioEstadoTicket(ticket) {
+  const ticketId = Number(ticket?.id || 0);
+  if (!ticketId) return null;
+
+  const estadoActual = Number(ticket?.status || 0);
+  const estadoAnterior = obtenerUltimoEstadoTicket(ticketId);
+
+  if (!Number.isFinite(estadoAnterior) || Number(estadoAnterior) === Number(estadoActual)) {
+    if (!Number.isFinite(estadoAnterior)) {
+      guardarUltimoEstadoTicket(ticketId, estadoActual);
+    }
+    return null;
+  }
+
+  const [ticketDetalle, solicitante] = await Promise.all([
+    obtenerTicketGLPI(ticketId),
+    obtenerSolicitanteTicketGLPI(ticketId),
+  ]);
+
+  if (!solicitante?.email) {
+    console.warn(`No se encontró email del solicitante para ticket ${ticketId}`);
+    guardarUltimoEstadoTicket(ticketId, estadoActual);
+    return null;
+  }
+
+  const asunto = `Actualización del caso #${ticketId}`;
+  const estadoAnteriorNombre = obtenerNombreEstadoTicket(estadoAnterior);
+  const estadoActualNombre = obtenerNombreEstadoTicket(estadoActual);
+  const contenidoOriginal = extraerContenidoHtml(ticketDetalle?.content || ticket?.content || "Sin descripción");
+
+  const contenidoCorreo = `
+    <p>Hola,</p>
+    <p>Tu caso <strong>#${ticketId}</strong> ha cambiado de estado.</p>
+    <p>Pasó de <strong>${escaparHtml(estadoAnteriorNombre)}</strong> a <strong>${escaparHtml(estadoActualNombre)}</strong>.</p>
+    <p>Esto indica que el proceso del ticket está avanzando y ya estamos trabajando en la siguiente etapa.</p>
+    <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid #28a745; margin: 15px 0;">
+      <p><strong>Asunto del ticket:</strong></p>
+      <p style="margin: 10px 0;">${escaparHtml(ticketDetalle?.name || ticket?.name || "Sin asunto")}</p>
+      <p style="margin-top: 15px;"><strong>Mensaje original:</strong></p>
+      <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
+        ${contenidoOriginal}
+      </div>
+    </div>
+    <p>Si necesitas alguna aclaración adicional, responde a este correo y lo revisaremos nuevamente.</p>
+  `;
+
+  const originalMessageId = await obtenerMessageIdPorTicket(ticketId);
+  if (originalMessageId) {
+    await responderCorreoEnHilo(originalMessageId, contenidoCorreo);
+  } else {
+    await enviarCorreoConDraft(solicitante.email, asunto, contenidoCorreo);
+  }
+
+  guardarUltimoEstadoTicket(ticketId, estadoActual);
+
+  return {
+    ticketId,
+    destinatario: solicitante.email,
+    estadoAnterior: estadoAnteriorNombre,
+    estadoActual: estadoActualNombre,
+  };
+}
+
+async function revisarCambiosEstadoTickets() {
+  const ticketsRespuesta = await obtenerTicketsGLPI();
+  const tickets = Array.isArray(ticketsRespuesta)
+    ? ticketsRespuesta
+    : Array.isArray(ticketsRespuesta?.data)
+      ? ticketsRespuesta.data
+      : Array.isArray(ticketsRespuesta?.items)
+        ? ticketsRespuesta.items
+        : [];
+
+  const enviados = [];
+
+  for (const ticket of tickets) {
+    const ticketId = Number(ticket?.id || 0);
+    if (!ticketId) continue;
+
+    const notificacion = await notificarCambioEstadoTicket(ticket);
+    if (notificacion) {
+      enviados.push(notificacion);
+    }
+  }
+
+  return enviados;
+}
+
 function iniciarJobSeguimientos() {
   console.log("Iniciando monitor de respuestas GLPI...");
 
@@ -237,9 +328,15 @@ function iniciarJobSeguimientos() {
     .then(() => {
       cron.schedule("* * * * *", async () => {
         try {
-          const enviados = await enviarSeguimientosNuevos();
-          if (enviados.length) {
-            console.log(`Respuestas notificadas por correo: ${enviados.length}`);
+          const enviadosFollowups = await enviarSeguimientosNuevos();
+          const cambiosEstado = await revisarCambiosEstadoTickets();
+
+          if (enviadosFollowups.length) {
+            console.log(`Respuestas notificadas por correo: ${enviadosFollowups.length}`);
+          }
+
+          if (cambiosEstado.length) {
+            console.log(`Cambios de estado notificados por correo: ${cambiosEstado.length}`);
           }
         } catch (error) {
           console.error("Error en monitor de respuestas:", error.message);
