@@ -29,7 +29,7 @@ const {
 } = require("../services/email-map");
 
 // ================= CONFIG =================
-const TECNICOS_PERMITIDOS = [7, 63, 66, 42,55];
+const TECNICOS_PERMITIDOS = [7, 63, 66, 42,55, 37];
 
 const ASIGNACIONES_DOBLES = {
   7: 52,
@@ -125,7 +125,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
         if (correo.conversationId) {
           try {
             convLockPath = await lockMessageId(`conv:${correo.conversationId}`);
-          } catch {
+          } catch {cla
             continue;
           }
         }
