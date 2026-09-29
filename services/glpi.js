@@ -302,6 +302,16 @@ async function obtenerUserEmailsGLPI(userId, sessionToken) {
   return normalizarListaGLPI(response.data);
 }
 
+async function obtenerCorreoUsuarioGLPI(userId) {
+  const sessionToken = await iniciarSesionGLPI();
+  const emails = await obtenerUserEmailsGLPI(userId, sessionToken);
+  const correo =
+    emails.find((item) => item?.is_default === 1 || item?.is_default === true) ||
+    emails[0];
+
+  return correo?.email || null;
+}
+
 async function obtenerUsersConEmailsGLPI(limit = 50) {
   const sessionToken = await iniciarSesionGLPI();
 
@@ -516,6 +526,7 @@ module.exports = {
   obtenerTicketGLPI,
   obtenerUsersGLPI,
   obtenerUsersConEmailsGLPI,
+  obtenerCorreoUsuarioGLPI,
   crearTicketGLPI,
   obtenerSolicitanteTicketGLPI,
   agregarRespuestaTicketGLPI,

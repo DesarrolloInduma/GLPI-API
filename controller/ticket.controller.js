@@ -4,6 +4,7 @@ const {
   obtenerCorreoPorId,
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
+  enviarCorreo,
 } = require("../services/outlook.service");
 
 const {
@@ -11,6 +12,7 @@ const {
   crearTicketGLPI,
   agregarRespuestaTicketGLPI,
   obtenerUsersGLPI,
+  obtenerCorreoUsuarioGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
@@ -34,6 +36,34 @@ const ASIGNACIONES_DOBLES = {
   66: 53,
   63: 55,
 };
+
+async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto) {
+  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
+
+  const correo = await obtenerCorreoUsuarioGLPI(tecnicoId);
+  if (!correo) {
+    console.warn(`No se encontró correo registrado para el técnico ${tecnicoId}`);
+    return false;
+  }
+
+  const asuntoHtml = String(asunto || "Sin asunto").replace(/[&<>"']/g, (caracter) => {
+    const entidades = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entidades[caracter];
+  });
+
+  await enviarCorreo(
+    correo,
+    `Ticket #${ticketId} asignado: ${asunto || "Sin asunto"}`,
+    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${asuntoHtml}</p>`
+  );
+  return true;
+}
 
 // ================= UTIL =================
 function limpiarRespuestaCorreo(html) {
@@ -262,6 +292,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           tecnicoId
         );
 
+        let notificacionEnviada = false;
         if (ticket?.id) {
           await guardarMessageIdParaTicket(
             ticket.id,
@@ -270,6 +301,21 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           );
 
           console.log(`✅ Ticket #${ticket.id} creado con técnico ${tecnicoId}`);
+
+          if (tecnicoId && TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) {
+            try {
+              notificacionEnviada = await notificarTecnicoAsignado(
+                ticket.id,
+                tecnicoId,
+                asunto
+              );
+            } catch (error) {
+              console.error(
+                `❌ No se pudo notificar al técnico ${tecnicoId} del ticket #${ticket.id}:`,
+                error.message
+              );
+            }
+          }
 
           // ================= ASIGNACIÓN DOBLE =================
           const adicional = ASIGNACIONES_DOBLES[tecnicoId];
@@ -296,6 +342,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           correoId: correo.id,
           ticketId: ticket?.id,
           tecnicoId,
+          notificacionEnviada,
           tipo: "NUEVO",
         });
 
