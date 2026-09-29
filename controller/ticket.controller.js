@@ -13,6 +13,7 @@ const {
   agregarRespuestaTicketGLPI,
   obtenerUsersGLPI,
   obtenerCorreoUsuarioGLPI,
+  obtenerNombreUsuarioGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
@@ -37,16 +38,8 @@ const ASIGNACIONES_DOBLES = {
   63: 55,
 };
 
-async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto) {
-  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
-
-  const correo = await obtenerCorreoUsuarioGLPI(tecnicoId);
-  if (!correo) {
-    console.warn(`No se encontró correo registrado para el técnico ${tecnicoId}`);
-    return false;
-  }
-
-  const asuntoHtml = String(asunto || "Sin asunto").replace(/[&<>"']/g, (caracter) => {
+function escaparHtml(valor) {
+  return String(valor || "").replace(/[&<>"']/g, (caracter) => {
     const entidades = {
       "&": "&amp;",
       "<": "&lt;",
@@ -56,11 +49,51 @@ async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto) {
     };
     return entidades[caracter];
   });
+}
+
+async function obtenerNombreTecnico(tecnicoId) {
+  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return null;
+
+  try {
+    return (
+      (await obtenerNombreUsuarioGLPI(tecnicoId)) || `Técnico #${tecnicoId}`
+    );
+  } catch (error) {
+    console.warn(`No se pudo consultar el nombre del técnico ${tecnicoId}:`, error.message);
+    return `Técnico #${tecnicoId}`;
+  }
+}
+
+async function notificarCreacionTicket(email, ticketId, asunto, nombreTecnico) {
+  if (!email || email === "sin-correo") return false;
+
+  const detalleTecnico = nombreTecnico
+    ? `<p><strong>Técnico asignado:</strong> ${escaparHtml(nombreTecnico)}</p>`
+    : "";
+
+  await enviarCorreo(
+    email,
+    `Caso creado - Ticket #${ticketId}`,
+    `<p>Tu caso fue creado correctamente.</p><p>El número de tu ticket es <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p>${detalleTecnico}`
+  );
+  return true;
+}
+
+async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, nombreTecnico) {
+  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
+
+  const correo = await obtenerCorreoUsuarioGLPI(tecnicoId);
+  if (!correo) {
+    console.warn(`No se encontró correo registrado para el técnico ${tecnicoId}`);
+    return false;
+  }
+
+  nombreTecnico = nombreTecnico || `Técnico #${tecnicoId}`;
 
   await enviarCorreo(
     correo,
     `Ticket #${ticketId} asignado: ${asunto || "Sin asunto"}`,
-    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${asuntoHtml}</p>`
+    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p><p>Asignado a: <strong>${escaparHtml(nombreTecnico)}</strong>.</p>`
   );
   return true;
 }
@@ -292,8 +325,10 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           tecnicoId
         );
 
-        let notificacionEnviada = false;
+        let notificacionSolicitanteEnviada = false;
+        let notificacionTecnicoEnviada = false;
         if (ticket?.id) {
+          const nombreTecnicoAsignado = await obtenerNombreTecnico(tecnicoId);
           await guardarMessageIdParaTicket(
             ticket.id,
             correo.id,
@@ -302,12 +337,27 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
 
           console.log(`✅ Ticket #${ticket.id} creado con técnico ${tecnicoId}`);
 
+          try {
+            notificacionSolicitanteEnviada = await notificarCreacionTicket(
+              email,
+              ticket.id,
+              asunto,
+              nombreTecnicoAsignado
+            );
+          } catch (error) {
+            console.error(
+              `❌ No se pudo confirmar la creación del ticket #${ticket.id} al remitente:`,
+              error.message
+            );
+          }
+
           if (tecnicoId && TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) {
             try {
-              notificacionEnviada = await notificarTecnicoAsignado(
+              notificacionTecnicoEnviada = await notificarTecnicoAsignado(
                 ticket.id,
                 tecnicoId,
-                asunto
+                asunto,
+                nombreTecnicoAsignado
               );
             } catch (error) {
               console.error(
@@ -342,7 +392,8 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
           correoId: correo.id,
           ticketId: ticket?.id,
           tecnicoId,
-          notificacionEnviada,
+          notificacionSolicitanteEnviada,
+          notificacionTecnicoEnviada,
           tipo: "NUEVO",
         });
 
@@ -385,7 +436,19 @@ async function obtenerTickets(req, res) {
 async function crearTicket(req, res) {
   const { asunto, descripcion, email } = req.body;
   const ticket = await crearTicketGLPI(asunto, descripcion, email, "", 0);
-  res.json({ ok: true, ticket });
+  let notificacionSolicitanteEnviada = false;
+  if (ticket?.id) {
+    try {
+      notificacionSolicitanteEnviada = await notificarCreacionTicket(
+        email,
+        ticket.id,
+        asunto
+      );
+    } catch (error) {
+      console.error(`No se pudo notificar la creación del ticket #${ticket.id}:`, error.message);
+    }
+  }
+  res.json({ ok: true, ticket, notificacionSolicitanteEnviada });
 }
 
 async function crearTicketDesdeCorreo(req, res) {
@@ -399,13 +462,26 @@ async function crearTicketDesdeCorreo(req, res) {
     0
   );
 
+  let notificacionSolicitanteEnviada = false;
+  if (ticket?.id) {
+    try {
+      notificacionSolicitanteEnviada = await notificarCreacionTicket(
+        correo.from?.emailAddress?.address,
+        ticket.id,
+        correo.subject
+      );
+    } catch (error) {
+      console.error(`No se pudo notificar la creación del ticket #${ticket.id}:`, error.message);
+    }
+  }
+
   await guardarMessageIdParaTicket(
     ticket.id,
     correo.id,
     correo.conversationId
   );
 
-  res.json({ ok: true, ticket });
+  res.json({ ok: true, ticket, notificacionSolicitanteEnviada });
 }
 
 async function responderTicket(req, res) {

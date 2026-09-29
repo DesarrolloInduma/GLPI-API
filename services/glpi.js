@@ -99,6 +99,17 @@ async function obtenerUsuario(userId, sessionToken) {
   return response.data;
 }
 
+async function obtenerNombreUsuarioGLPI(userId) {
+  const sessionToken = await iniciarSesionGLPI();
+  const usuario = await obtenerUsuario(userId, sessionToken);
+  const nombreCompleto = [usuario?.firstname, usuario?.realname]
+    .filter((parte) => String(parte || "").trim())
+    .join(" ")
+    .trim();
+
+  return nombreCompleto || usuario?.name || null;
+}
+
 function nombreEstaDuplicado(usuario, email) {
   const login = email.split("@")[0].toLowerCase();
   const firstname = (usuario.firstname || "").trim().toLowerCase();
@@ -527,6 +538,7 @@ module.exports = {
   obtenerUsersGLPI,
   obtenerUsersConEmailsGLPI,
   obtenerCorreoUsuarioGLPI,
+  obtenerNombreUsuarioGLPI,
   crearTicketGLPI,
   obtenerSolicitanteTicketGLPI,
   agregarRespuestaTicketGLPI,
