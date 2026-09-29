@@ -143,7 +143,7 @@ async function enviarCorreo(destinatario, asunto, contenidoHtml) {
   try {
     const token = await getAccessToken();
 
-    await axios.post(
+    const response = await axios.post(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_USER)}/sendMail`,
       {
         message: {
@@ -169,8 +169,16 @@ async function enviarCorreo(destinatario, asunto, contenidoHtml) {
         },
       },
     );
+    console.info("Microsoft Graph aceptó el envío del correo", {
+      status: response.status,
+    });
+    return response.status;
   } catch (error) {
-    console.error(error.response?.data || error.message);
+    console.error("Error enviando correo por Microsoft Graph:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
     throw error;
   }
 }
