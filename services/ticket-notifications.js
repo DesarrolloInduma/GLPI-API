@@ -1,4 +1,5 @@
 const { enviarCorreo } = require("./outlook.service");
+const sanitizeHtml = require("sanitize-html");
 const {
   obtenerCorreoUsuarioGLPI,
   obtenerNombreUsuarioGLPI,
@@ -21,25 +22,55 @@ function escaparHtml(valor) {
   });
 }
 
-function contenidoTicketComoTexto(contenido) {
-  const entidades = {
-    "&nbsp;": " ",
-    "&#160;": " ",
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&apos;": "'",
-  };
+function sanitizarContenidoTicket(contenido) {
+  const html = String(contenido || "Sin descripción");
+  if (!/<[a-z][^>]*>/i.test(html)) {
+    return escaparHtml(html).replace(/\r?\n/g, "<br>");
+  }
 
-  return String(contenido || "Sin descripción")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;|&#160;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;/gi, (entidad) => entidades[entidad.toLowerCase()])
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sanitizeHtml(html, {
+    allowedTags: [
+      ...sanitizeHtml.defaults.allowedTags,
+      "img",
+      "table",
+      "thead",
+      "tbody",
+      "tfoot",
+      "tr",
+      "td",
+      "th",
+      "span",
+      "font",
+      "center",
+      "hr",
+    ],
+    allowedAttributes: {
+      a: ["href", "name", "target", "style"],
+      img: ["src", "alt", "title", "width", "height", "style"],
+      table: ["width", "border", "cellpadding", "cellspacing", "style"],
+      td: ["colspan", "rowspan", "width", "height", "align", "valign", "style"],
+      th: ["colspan", "rowspan", "width", "height", "align", "valign", "style"],
+      tr: ["align", "valign", "style"],
+      "*": ["style"],
+    },
+    allowedStyles: {
+      "*": {
+        color: [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d.,% ]+\)$/i, /^[a-z]+$/i],
+        "background-color": [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d.,% ]+\)$/i, /^[a-z]+$/i],
+        "font-family": [/^[\w\s,"'-]+$/],
+        "font-size": [/^\d+(?:px|pt|em|rem|%)$/i],
+        "font-weight": [/^(normal|bold|[1-9]00)$/i],
+        "font-style": [/^(normal|italic|oblique)$/i],
+        "text-decoration": [/^(none|underline|line-through)$/i],
+        "text-align": [/^(left|right|center|justify)$/i],
+        "vertical-align": [/^(top|middle|bottom|baseline)$/i],
+        "white-space": [/^(normal|pre|pre-wrap|nowrap)$/i],
+        width: [/^\d+(?:px|%|em)$/i],
+        height: [/^\d+(?:px|%|em)$/i],
+      },
+    },
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+  });
 }
 
 async function obtenerNombreTecnico(tecnicoId) {
@@ -86,7 +117,7 @@ async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, contenidoTi
     console.warn(`Usando correo configurado para el técnico ${tecnicoId} porque GLPI no tiene uno registrado`);
   }
 
-  const mensajeTicket = escaparHtml(contenidoTicketComoTexto(contenidoTicket));
+  const mensajeTicket = sanitizarContenidoTicket(contenidoTicket);
   await enviarCorreo(
     correo,
     `Ticket #${ticketId} asignado: ${asunto || "Sin asunto"}`,
@@ -107,6 +138,7 @@ async function notificarAsignacionSolicitante(email, ticketId, asunto, nombreTec
 }
 
 module.exports = {
+  sanitizarContenidoTicket,
   obtenerNombreTecnico,
   notificarCreacionTicket,
   notificarTecnicoAsignado,
