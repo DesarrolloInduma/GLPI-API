@@ -7,6 +7,7 @@ const {
   obtenerTicketsGLPI,
   obtenerSolicitanteTicketGLPI,
   obtenerSeguimientoGLPI,
+  obtenerAsignacionesRecientesGLPI,
 } = require("../services/glpi");
 
 const {
@@ -14,6 +15,14 @@ const {
   enviarCorreoConDraft,
   responderCorreoEnHilo,
 } = require("../services/outlook.service");
+
+const {
+  obtenerNombreTecnico,
+  notificarTecnicoAsignado,
+  notificarAsignacionSolicitante,
+} = require("../services/ticket-notifications");
+
+const { TECNICOS_PERMITIDOS } = require("../config/tickets");
 
 const {
   obtenerMessageIdPorTicket,
@@ -37,7 +46,7 @@ const ESTADOS_TICKET = {
   6: "Cerrado",
 };
 
-const baselineIds = { followup: null, solution: null };
+const baselineIds = { followup: null, solution: null, ticketUser: null };
 let monitorInicializado = false;
 
 const EVENTOS_POR_REVISION = Number(process.env.GLPI_EVENTOS_POR_REVISION || 200);
@@ -128,12 +137,19 @@ async function obtenerEventosGLPI() {
 }
 
 async function inicializarMonitorSeguimientos() {
-  const eventos = await obtenerEventosGLPI();
+  const [eventos, asignaciones] = await Promise.all([
+    obtenerEventosGLPI(),
+    obtenerAsignacionesRecientesGLPI(EVENTOS_POR_REVISION),
+  ]);
   establecerLineaBase(eventos);
+  baselineIds.ticketUser = Math.max(
+    0,
+    ...asignaciones.map((asignacion) => Number(asignacion?.id || 0))
+  );
   guardarBaseline(baselineIds);
   marcarSeguimientosEnviados(eventos.map(e => e.id), true);
   monitorInicializado = true;
-  console.log(`Monitor listo: followup>${baselineIds.followup}, solution>${baselineIds.solution}`);
+  console.log(`Monitor listo: followup>${baselineIds.followup}, solution>${baselineIds.solution}, asignaciones>${baselineIds.ticketUser}`);
 }
 
 async function enviarSeguimientosNuevos() {
@@ -233,6 +249,89 @@ async function enviarSeguimientosNuevos() {
   return enviados;
 }
 
+async function notificarAsignacionesManualesNuevas() {
+  if (!monitorInicializado) return [];
+
+  const asignaciones = await obtenerAsignacionesRecientesGLPI(EVENTOS_POR_REVISION);
+  const nuevas = asignaciones
+    .filter((asignacion) => Number(asignacion?.id || 0) > Number(baselineIds.ticketUser || 0))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+  const notificadas = [];
+
+  for (const asignacion of nuevas) {
+    const asignacionId = Number(asignacion.id);
+    const ticketId = Number(asignacion.tickets_id || 0);
+    const tecnicoId = Number(asignacion.users_id || 0);
+
+    if (
+      Number(asignacion.type) !== 2 ||
+      !ticketId ||
+      !TECNICOS_PERMITIDOS.includes(tecnicoId)
+    ) {
+      baselineIds.ticketUser = asignacionId;
+      guardarBaseline(baselineIds);
+      continue;
+    }
+
+    const marcadorSolicitante = `ticket-assignment:${asignacionId}:requester`;
+    const marcadorTecnico = `ticket-assignment:${asignacionId}:technician`;
+    let solicitanteNotificado = seguimientoYaEnviado(marcadorSolicitante);
+    let tecnicoNotificado = seguimientoYaEnviado(marcadorTecnico);
+
+    try {
+      if (!solicitanteNotificado || !tecnicoNotificado) {
+        const [ticket, solicitante, nombreTecnico] = await Promise.all([
+          obtenerTicketGLPI(ticketId),
+          obtenerSolicitanteTicketGLPI(ticketId),
+          obtenerNombreTecnico(tecnicoId),
+        ]);
+
+        if (!solicitanteNotificado) {
+          if (solicitante?.email) {
+            await notificarAsignacionSolicitante(
+              solicitante.email,
+              ticketId,
+              ticket?.name,
+              nombreTecnico
+            );
+          } else {
+            console.warn(`No se encontró email del solicitante para ticket ${ticketId}`);
+          }
+          marcarSeguimientosEnviados([marcadorSolicitante], true);
+          solicitanteNotificado = true;
+        }
+
+        if (!tecnicoNotificado) {
+          const enviado = await notificarTecnicoAsignado(
+            ticketId,
+            tecnicoId,
+            ticket?.name,
+            nombreTecnico
+          );
+          if (!enviado) {
+            console.warn(`No se pudo notificar al técnico ${tecnicoId} para ticket ${ticketId}`);
+          }
+          marcarSeguimientosEnviados([marcadorTecnico], true);
+          tecnicoNotificado = true;
+        }
+
+        notificadas.push({ ticketId, tecnicoId, nombreTecnico });
+      }
+
+      baselineIds.ticketUser = asignacionId;
+      guardarBaseline(baselineIds);
+    } catch (error) {
+      console.error(
+        `Error notificando asignación del ticket ${ticketId} al técnico ${tecnicoId}:`,
+        error.message
+      );
+      break;
+    }
+  }
+
+  return notificadas;
+}
+
 async function notificarCambioEstadoTicket(ticket) {
   const ticketId = Number(ticket?.id || 0);
   if (!ticketId) return null;
@@ -328,8 +427,13 @@ function iniciarJobSeguimientos() {
     .then(() => {
       cron.schedule("* * * * *", async () => {
         try {
+          const asignacionesNotificadas = await notificarAsignacionesManualesNuevas();
           const enviadosFollowups = await enviarSeguimientosNuevos();
           const cambiosEstado = await revisarCambiosEstadoTickets();
+
+          if (asignacionesNotificadas.length) {
+            console.log(`Asignaciones notificadas por correo: ${asignacionesNotificadas.length}`);
+          }
 
           if (enviadosFollowups.length) {
             console.log(`Respuestas notificadas por correo: ${enviadosFollowups.length}`);

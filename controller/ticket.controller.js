@@ -4,7 +4,6 @@ const {
   obtenerCorreoPorId,
   obtenerAdjuntosDeCorreo,
   obtenerDetalleAdjunto,
-  enviarCorreo,
 } = require("../services/outlook.service");
 
 const {
@@ -12,8 +11,7 @@ const {
   crearTicketGLPI,
   agregarRespuestaTicketGLPI,
   obtenerUsersGLPI,
-  obtenerCorreoUsuarioGLPI,
-  obtenerNombreUsuarioGLPI,
+  obtenerAsignacionesTicketGLPI,
   buscarUsuarioGLPIPorEmail,
   buscarUsuarioGLPIPorLogin,
   agregarUsuarioATicket,
@@ -29,74 +27,19 @@ const {
   unlockMessageId,
 } = require("../services/email-map");
 
-// ================= CONFIG =================
-const TECNICOS_PERMITIDOS = [7, 63, 66, 42,55, 37];
+const { TECNICOS_PERMITIDOS } = require("../config/tickets");
+const { marcarSeguimientosEnviados } = require("../services/followup-state");
+const {
+  obtenerNombreTecnico,
+  notificarCreacionTicket,
+  notificarTecnicoAsignado,
+} = require("../services/ticket-notifications");
 
 const ASIGNACIONES_DOBLES = {
   7: 52,
   66: 53,
   63: 55,
 };
-
-function escaparHtml(valor) {
-  return String(valor || "").replace(/[&<>"']/g, (caracter) => {
-    const entidades = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
-    return entidades[caracter];
-  });
-}
-
-async function obtenerNombreTecnico(tecnicoId) {
-  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return null;
-
-  try {
-    return (
-      (await obtenerNombreUsuarioGLPI(tecnicoId)) || `Técnico #${tecnicoId}`
-    );
-  } catch (error) {
-    console.warn(`No se pudo consultar el nombre del técnico ${tecnicoId}:`, error.message);
-    return `Técnico #${tecnicoId}`;
-  }
-}
-
-async function notificarCreacionTicket(email, ticketId, asunto, nombreTecnico) {
-  if (!email || email === "sin-correo") return false;
-
-  const detalleTecnico = nombreTecnico
-    ? `<p><strong>Técnico asignado:</strong> ${escaparHtml(nombreTecnico)}</p>`
-    : "";
-
-  await enviarCorreo(
-    email,
-    `Caso creado - Ticket #${ticketId}`,
-    `<p>Tu caso fue creado correctamente.</p><p>El número de tu ticket es <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p>${detalleTecnico}`
-  );
-  return true;
-}
-
-async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, nombreTecnico) {
-  if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
-
-  const correo = await obtenerCorreoUsuarioGLPI(tecnicoId);
-  if (!correo) {
-    console.warn(`No se encontró correo registrado para el técnico ${tecnicoId}`);
-    return false;
-  }
-
-  nombreTecnico = nombreTecnico || `Técnico #${tecnicoId}`;
-
-  await enviarCorreo(
-    correo,
-    `Ticket #${ticketId} asignado: ${asunto || "Sin asunto"}`,
-    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p><p>Asignado a: <strong>${escaparHtml(nombreTecnico)}</strong>.</p>`
-  );
-  return true;
-}
 
 // ================= UTIL =================
 function limpiarRespuestaCorreo(html) {
@@ -362,6 +305,34 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
             } catch (error) {
               console.error(
                 `❌ No se pudo notificar al técnico ${tecnicoId} del ticket #${ticket.id}:`,
+                error.message
+              );
+            }
+          }
+
+          if (tecnicoId && (notificacionSolicitanteEnviada || notificacionTecnicoEnviada)) {
+            try {
+              const asignaciones = await obtenerAsignacionesTicketGLPI(ticket.id);
+              const relacion = asignaciones.find(
+                (item) =>
+                  Number(item?.type) === 2 &&
+                  Number(item?.users_id) === Number(tecnicoId)
+              );
+              const avisosEnviados = [];
+
+              if (relacion?.id && notificacionSolicitanteEnviada) {
+                avisosEnviados.push(`ticket-assignment:${relacion.id}:requester`);
+              }
+              if (relacion?.id && notificacionTecnicoEnviada) {
+                avisosEnviados.push(`ticket-assignment:${relacion.id}:technician`);
+              }
+
+              if (avisosEnviados.length) {
+                marcarSeguimientosEnviados(avisosEnviados, true);
+              }
+            } catch (error) {
+              console.warn(
+                `No se pudo registrar el estado de notificación del ticket #${ticket.id}:`,
                 error.message
               );
             }

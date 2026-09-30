@@ -10,7 +10,7 @@ function leerEstado() {
       return {
         inicializado: false,
         enviados: [],
-        baseline: { followup: 0, solution: 0 },
+        baseline: { followup: 0, solution: 0, ticketUser: 0 },
         ticketStatus: {},
       };
     }
@@ -26,6 +26,7 @@ function leerEstado() {
       baseline: {
         followup: Number(estado.baseline?.followup || 0),
         solution: Number(estado.baseline?.solution || 0),
+        ticketUser: Number(estado.baseline?.ticketUser || 0),
       },
       ticketStatus: estado.ticketStatus && typeof estado.ticketStatus === "object"
         ? estado.ticketStatus
@@ -35,7 +36,7 @@ function leerEstado() {
     return {
       inicializado: false,
       enviados: [],
-      baseline: { followup: 0, solution: 0 },
+      baseline: { followup: 0, solution: 0, ticketUser: 0 },
       ticketStatus: {},
     };
   }
@@ -87,6 +88,7 @@ function guardarBaseline(baseline) {
     baseline: {
       followup: Number(baseline.followup || 0),
       solution: Number(baseline.solution || 0),
+      ticketUser: Number(baseline.ticketUser || 0),
     },
   });
 }

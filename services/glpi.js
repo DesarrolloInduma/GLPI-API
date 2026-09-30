@@ -210,6 +210,27 @@ async function obtenerTicketGLPI(ticketId) {
   return response.data;
 }
 
+async function obtenerAsignacionesTicketGLPI(ticketId) {
+  const sessionToken = await iniciarSesionGLPI();
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/Ticket/${ticketId}/Ticket_User`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return normalizarListaGLPI(response.data);
+}
+
+async function obtenerAsignacionesRecientesGLPI(limit = 500) {
+  const sessionToken = await iniciarSesionGLPI();
+  const rangeEnd = Math.max(Number(limit) || 500, 1) - 1;
+  const response = await axios.get(
+    `${process.env.GLPI_URL}/Ticket_User?range=0-${rangeEnd}&sort=id&order=DESC`,
+    { headers: headersGLPI(sessionToken) }
+  );
+
+  return normalizarListaGLPI(response.data);
+}
+
 async function obtenerUsersGLPI() {
   const sessionToken = await iniciarSesionGLPI();
 
@@ -535,6 +556,8 @@ async function obtenerSeguimientoGLPI(followupId) {
 module.exports = {
   obtenerTicketsGLPI,
   obtenerTicketGLPI,
+  obtenerAsignacionesTicketGLPI,
+  obtenerAsignacionesRecientesGLPI,
   obtenerUsersGLPI,
   obtenerUsersConEmailsGLPI,
   obtenerCorreoUsuarioGLPI,
