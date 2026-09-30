@@ -3,7 +3,10 @@ const {
   obtenerCorreoUsuarioGLPI,
   obtenerNombreUsuarioGLPI,
 } = require("./glpi");
-const { TECNICOS_PERMITIDOS } = require("../config/tickets");
+const {
+  TECNICOS_PERMITIDOS,
+  CORREOS_TECNICOS,
+} = require("../config/tickets");
 
 function escaparHtml(valor) {
   return String(valor || "").replace(/[&<>"']/g, (caracter) => {
@@ -52,10 +55,14 @@ async function notificarCreacionTicket(email, ticketId, asunto, nombreTecnico) {
 async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, nombreTecnico) {
   if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
 
-  const correo = await obtenerCorreoUsuarioGLPI(tecnicoId);
+  const correoRegistrado = await obtenerCorreoUsuarioGLPI(tecnicoId);
+  const correo = correoRegistrado || CORREOS_TECNICOS[Number(tecnicoId)];
   if (!correo) {
     console.warn(`No se encontró correo registrado para el técnico ${tecnicoId}`);
     return false;
+  }
+  if (!correoRegistrado) {
+    console.warn(`Usando correo configurado para el técnico ${tecnicoId} porque GLPI no tiene uno registrado`);
   }
 
   const nombre = nombreTecnico || await obtenerNombreTecnico(tecnicoId) || `Técnico #${tecnicoId}`;

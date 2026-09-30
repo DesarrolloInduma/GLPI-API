@@ -262,14 +262,16 @@ async function notificarAsignacionesManualesNuevas() {
     const asignacionId = Number(asignacion.id);
     const ticketId = Number(asignacion.tickets_id || 0);
     const tecnicoId = Number(asignacion.users_id || 0);
+    const marcadorIgnorado = `ticket-assignment:${asignacionId}:ignored`;
+
+    if (seguimientoYaEnviado(marcadorIgnorado)) continue;
 
     if (
       Number(asignacion.type) !== 2 ||
       !ticketId ||
       !TECNICOS_PERMITIDOS.includes(tecnicoId)
     ) {
-      baselineIds.ticketUser = asignacionId;
-      guardarBaseline(baselineIds);
+      marcarSeguimientosEnviados([marcadorIgnorado], true);
       continue;
     }
 
@@ -310,6 +312,7 @@ async function notificarAsignacionesManualesNuevas() {
           );
           if (!enviado) {
             console.warn(`No se pudo notificar al técnico ${tecnicoId} para ticket ${ticketId}`);
+            continue;
           }
           marcarSeguimientosEnviados([marcadorTecnico], true);
           tecnicoNotificado = true;
@@ -317,9 +320,6 @@ async function notificarAsignacionesManualesNuevas() {
 
         notificadas.push({ ticketId, tecnicoId, nombreTecnico });
       }
-
-      baselineIds.ticketUser = asignacionId;
-      guardarBaseline(baselineIds);
     } catch (error) {
       console.error(
         `Error notificando asignación del ticket ${ticketId} al técnico ${tecnicoId}:`,
