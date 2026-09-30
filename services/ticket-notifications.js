@@ -21,6 +21,27 @@ function escaparHtml(valor) {
   });
 }
 
+function contenidoTicketComoTexto(contenido) {
+  const entidades = {
+    "&nbsp;": " ",
+    "&#160;": " ",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+  };
+
+  return String(contenido || "Sin descripción")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;|&#160;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;/gi, (entidad) => entidades[entidad.toLowerCase()])
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 async function obtenerNombreTecnico(tecnicoId) {
   if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return null;
 
@@ -52,7 +73,7 @@ async function notificarCreacionTicket(email, ticketId, asunto, nombreTecnico) {
   return true;
 }
 
-async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, nombreTecnico) {
+async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, contenidoTicket) {
   if (!TECNICOS_PERMITIDOS.includes(Number(tecnicoId))) return false;
 
   const correoRegistrado = await obtenerCorreoUsuarioGLPI(tecnicoId);
@@ -65,11 +86,11 @@ async function notificarTecnicoAsignado(ticketId, tecnicoId, asunto, nombreTecni
     console.warn(`Usando correo configurado para el técnico ${tecnicoId} porque GLPI no tiene uno registrado`);
   }
 
-  const nombre = nombreTecnico || await obtenerNombreTecnico(tecnicoId) || `Técnico #${tecnicoId}`;
+  const mensajeTicket = escaparHtml(contenidoTicketComoTexto(contenidoTicket));
   await enviarCorreo(
     correo,
     `Ticket #${ticketId} asignado: ${asunto || "Sin asunto"}`,
-    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p><p>Técnico asignado: <strong>${escaparHtml(nombre)}</strong>.</p>`
+    `<p>Se te ha asignado el ticket <strong>#${ticketId}</strong>.</p><p><strong>Asunto:</strong> ${escaparHtml(asunto || "Sin asunto")}</p><p><strong>Mensaje del ticket:</strong></p><pre style="white-space: pre-wrap; font-family: inherit;">${mensajeTicket}</pre>`
   );
   return true;
 }

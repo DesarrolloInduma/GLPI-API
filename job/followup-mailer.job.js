@@ -308,7 +308,7 @@ async function notificarAsignacionesManualesNuevas() {
             ticketId,
             tecnicoId,
             ticket?.name,
-            nombreTecnico
+            ticket?.content
           );
           if (!enviado) {
             console.warn(`No se pudo notificar al técnico ${tecnicoId} para ticket ${ticketId}`);

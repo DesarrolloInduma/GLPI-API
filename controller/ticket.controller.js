@@ -300,7 +300,7 @@ async function procesarCorreosNoLeidos(req = null, res = null) {
                 ticket.id,
                 tecnicoId,
                 asunto,
-                nombreTecnicoAsignado
+                descripcion
               );
             } catch (error) {
               console.error(
